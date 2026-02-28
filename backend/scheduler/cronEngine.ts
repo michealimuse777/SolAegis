@@ -23,7 +23,12 @@ export async function initScheduler(
         redisConnection = new RedisClient(redisUrl, {
             maxRetriesPerRequest: null,
             lazyConnect: true,
+            retryStrategy: () => null,  // Do not retry — fail fast
+            connectTimeout: 3000,
         });
+
+        // Suppress unhandled error events (we handle via try/catch)
+        redisConnection.on("error", () => { });
 
         await redisConnection.connect();
         console.log("[CronEngine] Redis connected");
@@ -37,6 +42,10 @@ export async function initScheduler(
         console.warn(
             "[CronEngine] Redis unavailable (" + err.message + ") — scheduler disabled"
         );
+        // Clean up the failed connection
+        if (redisConnection) {
+            try { redisConnection.disconnect(); } catch { }
+        }
         redisConnection = null;
         agentQueue = null;
         return false;
