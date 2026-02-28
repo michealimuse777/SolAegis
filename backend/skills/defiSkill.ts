@@ -90,6 +90,28 @@ export class DeFiSkill {
                 return { success: true, action, data: results };
             }
 
+            // ---------- Parameter validation ----------
+            if (action === "transfer") {
+                if (!params.mint || !params.to || !params.amount) {
+                    return { success: false, action, error: "Transfer requires params: mint (token mint address), to (recipient address), amount (number)" };
+                }
+            }
+            if (action === "swap") {
+                if (!params.mintA || !params.userTokenAccountA || !params.userTokenAccountB || !params.poolVaultA || !params.poolVaultB) {
+                    return { success: false, action, error: "Swap requires params: mintA, userTokenAccountA, userTokenAccountB, poolVaultA, poolVaultB, amountIn, amountOut" };
+                }
+            }
+            if (action === "liquidity") {
+                if (!params.userTokenAccountA || !params.userTokenAccountB || !params.poolVaultA || !params.poolVaultB) {
+                    return { success: false, action, error: "Liquidity requires params: userTokenAccountA, userTokenAccountB, poolVaultA, poolVaultB, amountA, amountB" };
+                }
+            }
+            if (action === "recover") {
+                if (!params.tokenAccount) {
+                    return { success: false, action, error: "Recover requires params: tokenAccount (empty token account address to close)" };
+                }
+            }
+
             // ---------- Build transaction ----------
             let tx: Transaction;
 
