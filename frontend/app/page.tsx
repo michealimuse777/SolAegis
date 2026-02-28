@@ -343,7 +343,7 @@ export default function Dashboard() {
 
       {/* Tab Navigation */}
       <nav style={{ display: "flex", gap: "4px", padding: "12px 24px", borderBottom: "1px solid rgba(255,255,255,0.04)" }}>
-        {(["dashboard", "portfolio", "decisions", "scamcheck", "recovery"] as TabType[]).map(t => (
+        {(["dashboard", "portfolio", "decisions", "scamcheck", "recovery", "scheduler"] as TabType[]).map(t => (
           <button key={t} onClick={() => setTab(t)} style={{
             padding: "8px 16px", borderRadius: "6px", border: "none", cursor: "pointer", fontSize: 13, fontWeight: 500,
             background: tab === t ? "rgba(59,130,246,0.15)" : "transparent",
