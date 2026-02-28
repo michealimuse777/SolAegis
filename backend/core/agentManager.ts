@@ -22,6 +22,33 @@ export class AgentManager {
             this.riskEngine,
             connection
         );
+
+        // Auto-restore agents from persisted wallets
+        this.restoreFromDisk();
+    }
+
+    /**
+     * Restores agents from persisted wallet storage.
+     * Called automatically on startup.
+     */
+    private restoreFromDisk(): void {
+        const persistedIds = this.walletService.listAgentIds();
+        for (const agentId of persistedIds) {
+            if (!this.agents.has(agentId)) {
+                const publicKey = this.walletService.getPublicKey(agentId);
+                const agent = new Agent(
+                    agentId,
+                    this.walletService,
+                    this.defiSkill,
+                    this.connection
+                );
+                this.agents.set(agentId, agent);
+                console.log(`[AgentManager] Restored agent "${agentId}" → wallet ${publicKey}`);
+            }
+        }
+        if (persistedIds.length > 0) {
+            console.log(`[AgentManager] Restored ${persistedIds.length} agent(s) from disk`);
+        }
     }
 
     /**
