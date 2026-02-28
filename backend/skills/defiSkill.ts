@@ -136,7 +136,7 @@ export class DeFiSkill {
                         return {
                             success: false,
                             action,
-                            error: `Unsafe token blocked: ${safety.reason}`,
+                            error: `Unsafe token blocked: ${safety.reasons.join("; ")}`,
                         };
                     }
 

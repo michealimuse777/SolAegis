@@ -4,12 +4,15 @@ dotenv.config();
 import express from "express";
 import cors from "cors";
 import { WebSocketServer, WebSocket } from "ws";
-import { Connection } from "@solana/web3.js";
+import { Connection, PublicKey } from "@solana/web3.js";
 import { AgentManager } from "./core/agentManager.js";
 import { KeyStore } from "./llm/keyStore.js";
 import { LLMManager } from "./llm/llmManager.js";
 import { LLMInterface } from "./core/dermercist/llmInterface.js";
 import { DerMercist } from "./core/dermercist/index.js";
+import { ExecutionLock } from "./services/executionLock.js";
+import { checkTokenSafety } from "./skills/scamFilter.js";
+import { getRecoverySummary } from "./skills/solRecovery.js";
 import {
     initScheduler,
     scheduleCronJob,
@@ -39,7 +42,8 @@ const llmManager = new LLMManager(
 const llmInterface = new LLMInterface(llmManager);
 const derMercist = new DerMercist(
     agentManager.getDeFiSkill(),
-    llmInterface
+    llmInterface,
+    connection
 );
 
 // ─────────── EXPRESS ───────────
@@ -165,6 +169,83 @@ app.post("/api/scheduler/schedule", async (req, res) => {
 // ─── LLM Stats ───
 app.get("/api/llm/stats", (_req, res) => {
     res.json(llmManager.getUsageStats());
+});
+
+// ─── Portfolio & Analytics ───
+app.get("/api/agents/:id/portfolio", async (req, res) => {
+    try {
+        const agent = agentManager.get(req.params.id);
+        if (!agent) return res.status(404).json({ error: "Agent not found" });
+        const keypair = agent.getKeypair();
+        const portfolio = await derMercist.getPositionTracker().snapshot(req.params.id, keypair.publicKey);
+        res.json(portfolio);
+    } catch (err: any) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+app.get("/api/agents/:id/analytics", (req, res) => {
+    try {
+        const analytics = derMercist.getAnalytics(req.params.id);
+        res.json(analytics);
+    } catch (err: any) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+app.get("/api/agents/:id/decisions", (req, res) => {
+    try {
+        const count = parseInt(req.query.count as string) || 20;
+        const decisions = derMercist.getDecisionHistory(req.params.id, count);
+        res.json(decisions);
+    } catch (err: any) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// ─── Scam Check ───
+app.post("/api/tokens/check", async (req, res) => {
+    try {
+        const { mint } = req.body;
+        if (!mint) return res.status(400).json({ error: "mint address required" });
+        const result = await checkTokenSafety(connection, new PublicKey(mint));
+        // Convert bigint to string for JSON
+        const serializable = {
+            ...result,
+            details: {
+                ...result.details,
+                supply: result.details.supply.toString(),
+            },
+        };
+        res.json(serializable);
+    } catch (err: any) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// ─── Recovery Summary ───
+app.get("/api/agents/:id/recovery", async (req, res) => {
+    try {
+        const agent = agentManager.get(req.params.id);
+        if (!agent) return res.status(404).json({ error: "Agent not found" });
+        const keypair = agent.getKeypair();
+        const summary = await getRecoverySummary(connection, keypair.publicKey);
+        res.json(summary);
+    } catch (err: any) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// ─── Execution Locks ───
+app.get("/api/locks", (_req, res) => {
+    res.json({
+        activeLocks: ExecutionLock.getActiveLocks(),
+    });
+});
+
+// ─── Allocation Rules ───
+app.get("/api/allocation/rules", (_req, res) => {
+    res.json(derMercist.getAllocationRules());
 });
 
 // ─────────── START ───────────

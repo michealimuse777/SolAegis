@@ -2,6 +2,8 @@ node_modules/
 dist/
 .env
 .wallets.json
+.positions.json
+.decisions.json
 setup.sh
 *.log
 frontend/.next/

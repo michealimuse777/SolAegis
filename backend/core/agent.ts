@@ -84,4 +84,11 @@ export class Agent {
     getPublicKey(): string {
         return this.walletService.getPublicKey(this.id);
     }
+
+    /**
+     * Get the agent's decrypted keypair (for position tracking and portfolio queries).
+     */
+    getKeypair() {
+        return this.walletService.getDecryptedKeypair(this.id);
+    }
 }
