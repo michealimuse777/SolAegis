@@ -4,7 +4,7 @@ import { useState, useEffect, useRef, useCallback } from "react";
 
 const API = "http://localhost:4000";
 
-type TabType = "dashboard" | "portfolio" | "decisions" | "scamcheck" | "recovery";
+type TabType = "dashboard" | "portfolio" | "decisions" | "scamcheck" | "recovery" | "scheduler";
 
 interface Agent {
   id: string;
@@ -96,11 +96,18 @@ export default function Dashboard() {
   // Recovery
   const [recovery, setRecovery] = useState<RecoverySummary | null>(null);
 
+  // Scheduler
+  const [cronJobs, setCronJobs] = useState<any[]>([]);
+  const [cronForm, setCronForm] = useState({ name: "", pattern: "*/10 * * * *", agentId: "", action: "scan_airdrops" });
+  const [cronLoading, setCronLoading] = useState(false);
+  const [cronResult, setCronResult] = useState<any>(null);
+
   // Action modal
   const [actionModal, setActionModal] = useState<{ open: boolean; agentId: string; type: string }>({ open: false, agentId: "", type: "" });
   const [actionParams, setActionParams] = useState<Record<string, string>>({});
   const [actionResult, setActionResult] = useState<any>(null);
   const [actionLoading, setActionLoading] = useState(false);
+  const [transferMode, setTransferMode] = useState<"sol" | "spl">("sol");
 
   const wsRef = useRef<WebSocket | null>(null);
 
@@ -178,10 +185,25 @@ export default function Dashboard() {
     setActionLoading(true);
     setActionResult(null);
     try {
-      const res = await fetch(`${API}/api/agents/${actionModal.agentId}/execute`, {
+      let url = `${API}/api/agents/${actionModal.agentId}/execute`;
+      let body: any = { action: actionModal.type, params: actionParams };
+
+      // SOL transfer uses dedicated endpoint
+      if (actionModal.type === "transfer" && transferMode === "sol") {
+        url = `${API}/api/agents/${actionModal.agentId}/transfer-sol`;
+        body = { to: actionParams.to, amount: actionParams.amount };
+      }
+
+      // Auto-recover uses dedicated endpoint
+      if (actionModal.type === "recover") {
+        url = `${API}/api/agents/${actionModal.agentId}/auto-recover`;
+        body = {};
+      }
+
+      const res = await fetch(url, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: actionModal.type, params: actionParams }),
+        body: JSON.stringify(body),
       });
       const data = await res.json();
       setActionResult(data);
@@ -217,6 +239,7 @@ export default function Dashboard() {
     setActionModal({ open: true, agentId, type });
     setActionParams({});
     setActionResult(null);
+    setTransferMode("sol");
   };
 
   // Fetch portfolio
@@ -241,6 +264,35 @@ export default function Dashboard() {
     } catch { }
   };
 
+  // Fetch cron jobs
+  const fetchCronJobs = async () => {
+    try {
+      const res = await fetch(`${API}/api/cron/jobs`);
+      const data = await res.json();
+      setCronJobs(Array.isArray(data) ? data : data.value || []);
+    } catch { }
+  };
+
+  // Schedule cron job
+  const scheduleCron = async () => {
+    if (!cronForm.name || !cronForm.agentId) return;
+    setCronLoading(true);
+    setCronResult(null);
+    try {
+      const res = await fetch(`${API}/api/cron/schedule`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(cronForm),
+      });
+      const data = await res.json();
+      setCronResult(data);
+      fetchCronJobs();
+    } catch (err: any) {
+      setCronResult({ success: false, error: err.message });
+    }
+    setCronLoading(false);
+  };
+
   // Scam check
   const checkScam = async () => {
     if (!scamMint.trim()) return;
@@ -262,6 +314,7 @@ export default function Dashboard() {
       if (tab === "portfolio" || tab === "decisions") fetchPortfolio(selectedAgent);
       if (tab === "recovery") fetchRecovery(selectedAgent);
     }
+    if (tab === "scheduler") fetchCronJobs();
   }, [tab, selectedAgent]);
 
   const activeAgent = agents.find(a => a.id === selectedAgent);
@@ -297,7 +350,7 @@ export default function Dashboard() {
             color: tab === t ? "#60a5fa" : "#888",
             transition: "all 0.2s",
           }}>
-            {t === "dashboard" ? "Dashboard" : t === "portfolio" ? "Portfolio" : t === "decisions" ? "Decision History" : t === "scamcheck" ? "Scam Checker" : "Recovery"}
+            {{ dashboard: "Dashboard", portfolio: "Portfolio", decisions: "Decisions", scamcheck: "Scam Checker", recovery: "Recovery", scheduler: "Scheduler" }[t]}
           </button>
         ))}
       </nav>
@@ -626,6 +679,80 @@ export default function Dashboard() {
             )}
           </div>
         )}
+        {/* ========== SCHEDULER TAB ========== */}
+        {tab === "scheduler" && (
+          <div>
+            <h2 style={{ fontSize: 20, fontWeight: 700, marginBottom: 16 }}>Cron Scheduler</h2>
+
+            {/* Create Job Form */}
+            <div style={{ ...cardStyle, marginBottom: 20 }}>
+              <h3 style={{ fontSize: 14, fontWeight: 600, marginBottom: 12 }}>Schedule New Job</h3>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
+                <div>
+                  <label style={{ fontSize: 11, color: "#888", display: "block", marginBottom: 4 }}>Job Name</label>
+                  <input value={cronForm.name} onChange={e => setCronForm({ ...cronForm, name: e.target.value })} placeholder="e.g. auto-scan" style={inputStyle} />
+                </div>
+                <div>
+                  <label style={{ fontSize: 11, color: "#888", display: "block", marginBottom: 4 }}>Cron Pattern</label>
+                  <input value={cronForm.pattern} onChange={e => setCronForm({ ...cronForm, pattern: e.target.value })} placeholder="*/10 * * * *" style={inputStyle} />
+                </div>
+                <div>
+                  <label style={{ fontSize: 11, color: "#888", display: "block", marginBottom: 4 }}>Agent</label>
+                  <select value={cronForm.agentId} onChange={e => setCronForm({ ...cronForm, agentId: e.target.value })} style={{ ...inputStyle, fontFamily: "inherit" }}>
+                    <option value="">Select agent...</option>
+                    {agents.map(a => <option key={a.id} value={a.id}>{a.id}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label style={{ fontSize: 11, color: "#888", display: "block", marginBottom: 4 }}>Action</label>
+                  <select value={cronForm.action} onChange={e => setCronForm({ ...cronForm, action: e.target.value })} style={{ ...inputStyle, fontFamily: "inherit" }}>
+                    <option value="scan_airdrops">Scan Airdrops</option>
+                    <option value="recover">Recover SOL</option>
+                    <option value="transfer">Transfer</option>
+                    <option value="swap">Swap</option>
+                  </select>
+                </div>
+              </div>
+              <div style={{ marginTop: 12, display: "flex", gap: 8, alignItems: "center" }}>
+                <button onClick={scheduleCron} disabled={cronLoading} style={{ padding: "10px 24px", borderRadius: "8px", border: "none", background: "linear-gradient(135deg, #3b82f6, #8b5cf6)", color: "#fff", cursor: "pointer", fontWeight: 600, fontSize: 14 }}>
+                  {cronLoading ? "Scheduling..." : "Schedule Job"}
+                </button>
+                <span style={{ fontSize: 11, color: "#666" }}>Pattern guide: */5 = every 5 min, 0 * = every hour, 0 0 = daily</span>
+              </div>
+              {cronResult && (
+                <div style={{ marginTop: 10, fontSize: 12, color: cronResult.success ? "#10b981" : "#ef4444" }}>
+                  {cronResult.success ? `✓ Scheduled "${cronResult.name}" on ${cronResult.pattern}` : `✗ ${cronResult.error}`}
+                </div>
+              )}
+            </div>
+
+            {/* Active Jobs */}
+            <div style={{ ...cardStyle }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+                <h3 style={{ fontSize: 14, fontWeight: 600 }}>Active Scheduled Jobs</h3>
+                <button onClick={fetchCronJobs} style={{ padding: "5px 12px", borderRadius: "6px", border: "1px solid rgba(59,130,246,0.3)", background: "rgba(59,130,246,0.1)", color: "#60a5fa", cursor: "pointer", fontSize: 11, fontWeight: 500 }}>Refresh</button>
+              </div>
+              {cronJobs.length === 0 ? (
+                <div style={{ textAlign: "center", color: "#555", padding: 24, fontSize: 13 }}>No scheduled jobs. Create one above.</div>
+              ) : (
+                <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                  {cronJobs.map((job, i) => (
+                    <div key={i} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "12px 16px", background: "rgba(255,255,255,0.02)", borderRadius: "8px", border: "1px solid rgba(255,255,255,0.04)" }}>
+                      <div>
+                        <div style={{ fontWeight: 600, fontSize: 13, color: "#ddd" }}>{job.name}</div>
+                        <div style={{ fontSize: 11, color: "#888", marginTop: 2 }}>Pattern: <span style={{ color: "#60a5fa", fontFamily: "monospace" }}>{job.pattern || job.every || "—"}</span></div>
+                      </div>
+                      <div style={{ textAlign: "right", fontSize: 11, color: "#666" }}>
+                        {job.next && <div>Next: {new Date(job.next).toLocaleString()}</div>}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
       </main>
 
       {/* Create Agent Modal */}
@@ -663,32 +790,48 @@ export default function Dashboard() {
 
             {actionModal.type === "transfer" && (
               <div style={{ display: "flex", flexDirection: "column", gap: "12px", marginBottom: 16 }}>
-                <div>
-                  <label style={{ fontSize: 11, color: "#888", display: "block", marginBottom: 4 }}>Token Mint Address</label>
-                  <input value={actionParams.mint || ""} onChange={e => setActionParams({ ...actionParams, mint: e.target.value })} placeholder="Token mint address" style={inputStyle} />
+                {/* SOL / SPL Toggle */}
+                <div style={{ display: "flex", gap: "8px" }}>
+                  <button onClick={() => setTransferMode("sol")} style={{
+                    flex: 1, padding: "8px", borderRadius: "8px", border: "1px solid",
+                    borderColor: transferMode === "sol" ? "rgba(16,185,129,0.5)" : "rgba(255,255,255,0.1)",
+                    background: transferMode === "sol" ? "rgba(16,185,129,0.15)" : "rgba(255,255,255,0.03)",
+                    color: transferMode === "sol" ? "#10b981" : "#888", cursor: "pointer", fontSize: 13, fontWeight: 600,
+                  }}>SOL</button>
+                  <button onClick={() => setTransferMode("spl")} style={{
+                    flex: 1, padding: "8px", borderRadius: "8px", border: "1px solid",
+                    borderColor: transferMode === "spl" ? "rgba(168,85,247,0.5)" : "rgba(255,255,255,0.1)",
+                    background: transferMode === "spl" ? "rgba(168,85,247,0.15)" : "rgba(255,255,255,0.03)",
+                    color: transferMode === "spl" ? "#a855f7" : "#888", cursor: "pointer", fontSize: 13, fontWeight: 600,
+                  }}>SPL Token</button>
                 </div>
+                {transferMode === "spl" && (
+                  <div>
+                    <label style={{ fontSize: 11, color: "#888", display: "block", marginBottom: 4 }}>Token Mint Address</label>
+                    <input value={actionParams.mint || ""} onChange={e => setActionParams({ ...actionParams, mint: e.target.value })} placeholder="Token mint address" style={inputStyle} />
+                  </div>
+                )}
                 <div>
                   <label style={{ fontSize: 11, color: "#888", display: "block", marginBottom: 4 }}>Recipient Address</label>
-                  <input value={actionParams.to || ""} onChange={e => setActionParams({ ...actionParams, to: e.target.value })} placeholder="Recipient wallet address" style={inputStyle} />
+                  <input value={actionParams.to || ""} onChange={e => setActionParams({ ...actionParams, to: e.target.value })} placeholder="Any wallet address (agent or external)" style={inputStyle} />
                 </div>
                 <div>
-                  <label style={{ fontSize: 11, color: "#888", display: "block", marginBottom: 4 }}>Amount (tokens)</label>
-                  <input value={actionParams.amount || ""} onChange={e => setActionParams({ ...actionParams, amount: e.target.value })} placeholder="Amount" type="number" style={inputStyle} />
+                  <label style={{ fontSize: 11, color: "#888", display: "block", marginBottom: 4 }}>Amount ({transferMode === "sol" ? "SOL" : "tokens"})</label>
+                  <input value={actionParams.amount || ""} onChange={e => setActionParams({ ...actionParams, amount: e.target.value })} placeholder={transferMode === "sol" ? "e.g. 0.1" : "e.g. 100"} type="number" step="any" style={inputStyle} />
                 </div>
-                <button onClick={executeWithParams} disabled={actionLoading} style={{ padding: "10px", borderRadius: "8px", border: "none", background: "linear-gradient(135deg, #f59e0b, #ef4444)", color: "#fff", cursor: "pointer", fontWeight: 600, fontSize: 14 }}>
-                  {actionLoading ? "Executing..." : "Execute Transfer"}
+                <button onClick={executeWithParams} disabled={actionLoading} style={{ padding: "10px", borderRadius: "8px", border: "none", background: transferMode === "sol" ? "linear-gradient(135deg, #10b981, #059669)" : "linear-gradient(135deg, #a855f7, #7c3aed)", color: "#fff", cursor: "pointer", fontWeight: 600, fontSize: 14 }}>
+                  {actionLoading ? "Sending..." : `Send ${transferMode === "sol" ? "SOL" : "SPL Tokens"}`}
                 </button>
               </div>
             )}
 
             {actionModal.type === "recover" && (
               <div style={{ display: "flex", flexDirection: "column", gap: "12px", marginBottom: 16 }}>
-                <div>
-                  <label style={{ fontSize: 11, color: "#888", display: "block", marginBottom: 4 }}>Token Account Address (empty account to close)</label>
-                  <input value={actionParams.tokenAccount || ""} onChange={e => setActionParams({ ...actionParams, tokenAccount: e.target.value })} placeholder="Token account address" style={inputStyle} />
+                <div style={{ fontSize: 13, color: "#aaa", lineHeight: 1.6 }}>
+                  Auto-scans for empty token accounts and closes them to reclaim rent SOL. No input needed.
                 </div>
-                <button onClick={executeWithParams} disabled={actionLoading} style={{ padding: "10px", borderRadius: "8px", border: "none", background: "linear-gradient(135deg, #ef4444, #dc2626)", color: "#fff", cursor: "pointer", fontWeight: 600, fontSize: 14 }}>
-                  {actionLoading ? "Executing..." : "Close Account & Recover SOL"}
+                <button onClick={executeWithParams} disabled={actionLoading} style={{ padding: "12px", borderRadius: "8px", border: "none", background: "linear-gradient(135deg, #f59e0b, #ef4444)", color: "#fff", cursor: "pointer", fontWeight: 600, fontSize: 14 }}>
+                  {actionLoading ? "Scanning & Recovering..." : "Auto Scan & Recover SOL"}
                 </button>
               </div>
             )}

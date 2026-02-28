@@ -118,6 +118,68 @@ app.post("/api/agents/:id/airdrop", async (req, res) => {
     }
 });
 
+// ─── SOL Transfer (plain SOL, no SPL mint needed) ───
+app.post("/api/agents/:id/transfer-sol", async (req, res) => {
+    try {
+        const agent = agentManager.get(req.params.id);
+        if (!agent) return res.status(404).json({ error: "Agent not found" });
+        const { to, amount } = req.body;
+        if (!to || !amount) return res.status(400).json({ error: "to (address) and amount (SOL) required" });
+
+        const { SystemProgram, Transaction, LAMPORTS_PER_SOL } = await import("@solana/web3.js");
+        const keypair = agent.getKeypair();
+        const lamports = Math.floor(parseFloat(amount) * LAMPORTS_PER_SOL);
+
+        const tx = new Transaction().add(
+            SystemProgram.transfer({
+                fromPubkey: keypair.publicKey,
+                toPubkey: new PublicKey(to),
+                lamports,
+            })
+        );
+        tx.feePayer = keypair.publicKey;
+        const { blockhash } = await connection.getLatestBlockhash();
+        tx.recentBlockhash = blockhash;
+        tx.sign(keypair);
+        const sig = await connection.sendRawTransaction(tx.serialize());
+        await connection.confirmTransaction(sig, "confirmed");
+        const newBalance = await connection.getBalance(keypair.publicKey) / 1e9;
+        broadcast("task:executed", { agentId: req.params.id, result: { success: true, action: "transfer-sol", signature: sig } });
+        res.json({ success: true, signature: sig, newBalance });
+    } catch (err: any) {
+        res.status(500).json({ success: false, error: err.message });
+    }
+});
+
+// ─── Auto Recover (scan + batch close empty accounts) ───
+app.post("/api/agents/:id/auto-recover", async (req, res) => {
+    try {
+        const agent = agentManager.get(req.params.id);
+        if (!agent) return res.status(404).json({ error: "Agent not found" });
+
+        const keypair = agent.getKeypair();
+        const { findAllRecoverable, batchRecover } = await import("./skills/solRecovery.js");
+        const recoverable = await findAllRecoverable(connection, keypair.publicKey);
+        const empty = recoverable.filter(a => a.type === "empty");
+
+        if (empty.length === 0) {
+            return res.json({ success: true, message: "No empty accounts to recover", recovered: 0, solRecovered: 0 });
+        }
+
+        const { tx, count, estimatedSOL } = await batchRecover(connection, keypair, empty.map(e => e.address));
+        tx.feePayer = keypair.publicKey;
+        const { blockhash } = await connection.getLatestBlockhash();
+        tx.recentBlockhash = blockhash;
+        tx.sign(keypair);
+        const sig = await connection.sendRawTransaction(tx.serialize());
+        await connection.confirmTransaction(sig, "confirmed");
+        broadcast("task:executed", { agentId: req.params.id, result: { success: true, action: "auto-recover", signature: sig } });
+        res.json({ success: true, signature: sig, recovered: count, solRecovered: estimatedSOL });
+    } catch (err: any) {
+        res.status(500).json({ success: false, error: err.message });
+    }
+});
+
 // ─── Tasks ───
 app.post("/api/agents/:id/execute", async (req, res) => {
     try {
