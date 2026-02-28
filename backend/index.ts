@@ -100,6 +100,24 @@ app.delete("/api/agents/:id", (req, res) => {
     }
 });
 
+// ─── Devnet Airdrop ───
+app.post("/api/agents/:id/airdrop", async (req, res) => {
+    try {
+        const agent = agentManager.get(req.params.id);
+        if (!agent) return res.status(404).json({ error: "Agent not found" });
+        const amount = req.body.amount || 1; // default 1 SOL
+        const lamports = Math.min(amount, 2) * 1e9; // max 2 SOL per airdrop
+        const pubkey = new PublicKey(agent.getPublicKey());
+        const sig = await connection.requestAirdrop(pubkey, lamports);
+        await connection.confirmTransaction(sig, "confirmed");
+        const balance = await connection.getBalance(pubkey) / 1e9;
+        broadcast("agent:funded", { id: req.params.id, amount, balance });
+        res.json({ success: true, signature: sig, newBalance: balance });
+    } catch (err: any) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
 // ─── Tasks ───
 app.post("/api/agents/:id/execute", async (req, res) => {
     try {
@@ -246,6 +264,38 @@ app.get("/api/locks", (_req, res) => {
 // ─── Allocation Rules ───
 app.get("/api/allocation/rules", (_req, res) => {
     res.json(derMercist.getAllocationRules());
+});
+
+// ─── Cron Jobs ───
+app.post("/api/cron/schedule", async (req, res) => {
+    try {
+        const { name, pattern, agentId, action } = req.body;
+        if (!name || !pattern || !agentId || !action) {
+            return res.status(400).json({ error: "name, pattern, agentId, action required" });
+        }
+        const data = { agentId, action, params: {} };
+        await scheduleCronJob(name, data, pattern);
+        // Create a worker to process scheduled jobs
+        createWorker(async (jobData) => {
+            const agent = agentManager.get(jobData.agentId);
+            if (!agent) return;
+            const result = await agent.execute({ action: jobData.action as any, params: jobData.params || {} });
+            broadcast("cron:executed", { name, agentId: jobData.agentId, result });
+            console.log(`[Cron] Executed ${name}: ${jobData.action} for ${jobData.agentId}`);
+        });
+        res.json({ success: true, name, pattern, agentId, action });
+    } catch (err: any) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+app.get("/api/cron/jobs", async (_req, res) => {
+    try {
+        const jobs = await listScheduledJobs();
+        res.json(jobs);
+    } catch (err: any) {
+        res.status(500).json({ error: err.message });
+    }
 });
 
 // ─────────── START ───────────

@@ -4,6 +4,7 @@ dist/
 .wallets.json
 .positions.json
 .decisions.json
+.solana-key.json
 setup.sh
 *.log
 frontend/.next/

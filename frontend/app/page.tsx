@@ -96,6 +96,12 @@ export default function Dashboard() {
   // Recovery
   const [recovery, setRecovery] = useState<RecoverySummary | null>(null);
 
+  // Action modal
+  const [actionModal, setActionModal] = useState<{ open: boolean; agentId: string; type: string }>({ open: false, agentId: "", type: "" });
+  const [actionParams, setActionParams] = useState<Record<string, string>>({});
+  const [actionResult, setActionResult] = useState<any>(null);
+  const [actionLoading, setActionLoading] = useState(false);
+
   const wsRef = useRef<WebSocket | null>(null);
 
   // Fetch agents
@@ -154,16 +160,63 @@ export default function Dashboard() {
     setLoading(false);
   };
 
-  // Execute action
+  // Execute action (no params)
   const executeAction = async (agentId: string, action: string) => {
     try {
-      await fetch(`${API}/api/agents/${agentId}/execute`, {
+      const res = await fetch(`${API}/api/agents/${agentId}/execute`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action, params: {} }),
       });
       fetchAgents();
     } catch { }
+  };
+
+  // Execute action with params (from modal)
+  const executeWithParams = async () => {
+    if (!actionModal.agentId) return;
+    setActionLoading(true);
+    setActionResult(null);
+    try {
+      const res = await fetch(`${API}/api/agents/${actionModal.agentId}/execute`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: actionModal.type, params: actionParams }),
+      });
+      const data = await res.json();
+      setActionResult(data);
+      fetchAgents();
+    } catch (err: any) {
+      setActionResult({ success: false, error: err.message });
+    }
+    setActionLoading(false);
+  };
+
+  // Request devnet airdrop
+  const requestAirdrop = async (agentId: string) => {
+    setActionLoading(true);
+    setActionModal({ open: true, agentId, type: "airdrop" });
+    setActionResult(null);
+    try {
+      const res = await fetch(`${API}/api/agents/${agentId}/airdrop`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ amount: 1 }),
+      });
+      const data = await res.json();
+      setActionResult(data);
+      fetchAgents();
+    } catch (err: any) {
+      setActionResult({ success: false, error: err.message });
+    }
+    setActionLoading(false);
+  };
+
+  // Open action form
+  const openActionForm = (agentId: string, type: string) => {
+    setActionModal({ open: true, agentId, type });
+    setActionParams({});
+    setActionResult(null);
   };
 
   // Fetch portfolio
@@ -302,11 +355,13 @@ export default function Dashboard() {
                       <span key={s} style={{ padding: "2px 8px", borderRadius: "4px", fontSize: 10, background: "rgba(59,130,246,0.1)", color: "#60a5fa", border: "1px solid rgba(59,130,246,0.2)" }}>{s}</span>
                     ))}
                   </div>
-                  <div style={{ display: "flex", gap: "6px" }}>
+                  <div style={{ display: "flex", gap: "6px", flexWrap: "wrap" }}>
                     <button onClick={() => executeAction(a.id, "scan_airdrops")} style={actionBtn("#3b82f6")}>Scan</button>
-                    <button onClick={() => { setSelectedAgent(a.id); setTab("portfolio"); }} style={actionBtn("#10b981")}>Portfolio</button>
-                    <button onClick={() => { setSelectedAgent(a.id); setTab("decisions"); }} style={actionBtn("#8b5cf6")}>History</button>
-                    <button onClick={() => { setSelectedAgent(a.id); setTab("recovery"); }} style={actionBtn("#f59e0b")}>Recovery</button>
+                    <button onClick={() => requestAirdrop(a.id)} style={actionBtn("#10b981")}>Airdrop</button>
+                    <button onClick={() => openActionForm(a.id, "transfer")} style={actionBtn("#f59e0b")}>Transfer</button>
+                    <button onClick={() => openActionForm(a.id, "recover")} style={actionBtn("#ef4444")}>Recover</button>
+                    <button onClick={() => { setSelectedAgent(a.id); setTab("portfolio"); }} style={actionBtn("#8b5cf6")}>Portfolio</button>
+                    <button onClick={() => { setSelectedAgent(a.id); setTab("decisions"); }} style={actionBtn("#a855f7")}>History</button>
                   </div>
                 </div>
               ))}
@@ -593,6 +648,71 @@ export default function Dashboard() {
         </div>
       )}
 
+      {/* Action Modal */}
+      {actionModal.open && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.7)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 200 }} onClick={() => setActionModal({ open: false, agentId: "", type: "" })}>
+          <div onClick={e => e.stopPropagation()} style={{ background: "#1a1a2e", border: "1px solid rgba(255,255,255,0.1)", borderRadius: "16px", padding: "28px", width: 440, backdropFilter: "blur(20px)", maxHeight: "80vh", overflow: "auto" }}>
+            <h3 style={{ fontSize: 18, fontWeight: 700, marginBottom: 4, textTransform: "capitalize" }}>{actionModal.type}</h3>
+            <div style={{ fontSize: 12, color: "#666", marginBottom: 16 }}>Agent: {actionModal.agentId}</div>
+
+            {actionModal.type === "airdrop" && (
+              <div style={{ fontSize: 13, color: "#888", marginBottom: 16 }}>
+                {actionLoading ? "Requesting 1 SOL airdrop from devnet..." : "Airdrop request sent."}
+              </div>
+            )}
+
+            {actionModal.type === "transfer" && (
+              <div style={{ display: "flex", flexDirection: "column", gap: "12px", marginBottom: 16 }}>
+                <div>
+                  <label style={{ fontSize: 11, color: "#888", display: "block", marginBottom: 4 }}>Token Mint Address</label>
+                  <input value={actionParams.mint || ""} onChange={e => setActionParams({ ...actionParams, mint: e.target.value })} placeholder="Token mint address" style={inputStyle} />
+                </div>
+                <div>
+                  <label style={{ fontSize: 11, color: "#888", display: "block", marginBottom: 4 }}>Recipient Address</label>
+                  <input value={actionParams.to || ""} onChange={e => setActionParams({ ...actionParams, to: e.target.value })} placeholder="Recipient wallet address" style={inputStyle} />
+                </div>
+                <div>
+                  <label style={{ fontSize: 11, color: "#888", display: "block", marginBottom: 4 }}>Amount (tokens)</label>
+                  <input value={actionParams.amount || ""} onChange={e => setActionParams({ ...actionParams, amount: e.target.value })} placeholder="Amount" type="number" style={inputStyle} />
+                </div>
+                <button onClick={executeWithParams} disabled={actionLoading} style={{ padding: "10px", borderRadius: "8px", border: "none", background: "linear-gradient(135deg, #f59e0b, #ef4444)", color: "#fff", cursor: "pointer", fontWeight: 600, fontSize: 14 }}>
+                  {actionLoading ? "Executing..." : "Execute Transfer"}
+                </button>
+              </div>
+            )}
+
+            {actionModal.type === "recover" && (
+              <div style={{ display: "flex", flexDirection: "column", gap: "12px", marginBottom: 16 }}>
+                <div>
+                  <label style={{ fontSize: 11, color: "#888", display: "block", marginBottom: 4 }}>Token Account Address (empty account to close)</label>
+                  <input value={actionParams.tokenAccount || ""} onChange={e => setActionParams({ ...actionParams, tokenAccount: e.target.value })} placeholder="Token account address" style={inputStyle} />
+                </div>
+                <button onClick={executeWithParams} disabled={actionLoading} style={{ padding: "10px", borderRadius: "8px", border: "none", background: "linear-gradient(135deg, #ef4444, #dc2626)", color: "#fff", cursor: "pointer", fontWeight: 600, fontSize: 14 }}>
+                  {actionLoading ? "Executing..." : "Close Account & Recover SOL"}
+                </button>
+              </div>
+            )}
+
+            {/* Result */}
+            {actionResult && (
+              <div style={{ ...cardStyle, marginTop: 12 }}>
+                <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 6, color: actionResult.success ? "#10b981" : "#ef4444" }}>
+                  {actionResult.success ? "Success" : "Failed"}
+                </div>
+                {actionResult.signature && <div style={{ fontSize: 11, color: "#888", wordBreak: "break-all" }}>Sig: {actionResult.signature}</div>}
+                {actionResult.newBalance && <div style={{ fontSize: 13, color: "#10b981", marginTop: 4 }}>New Balance: {actionResult.newBalance.toFixed(4)} SOL</div>}
+                {actionResult.error && <div style={{ fontSize: 12, color: "#ef4444", marginTop: 4 }}>{actionResult.error}</div>}
+                {actionResult.data && <div style={{ fontSize: 11, color: "#888", marginTop: 4 }}>{JSON.stringify(actionResult.data, null, 2)}</div>}
+              </div>
+            )}
+
+            <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 12 }}>
+              <button onClick={() => setActionModal({ open: false, agentId: "", type: "" })} style={{ padding: "8px 18px", borderRadius: "8px", border: "1px solid rgba(255,255,255,0.1)", background: "transparent", color: "#888", cursor: "pointer", fontSize: 13 }}>Close</button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <style>{`
         @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
       `}</style>
@@ -622,6 +742,19 @@ const thStyle: React.CSSProperties = {
 const tdStyle: React.CSSProperties = {
   padding: "10px 14px",
   color: "#ccc",
+};
+
+const inputStyle: React.CSSProperties = {
+  width: "100%",
+  padding: "10px 14px",
+  borderRadius: "8px",
+  border: "1px solid rgba(255,255,255,0.1)",
+  background: "rgba(255,255,255,0.05)",
+  color: "#e0e0e0",
+  fontSize: 13,
+  fontFamily: "monospace",
+  outline: "none",
+  boxSizing: "border-box",
 };
 
 function actionBtn(color: string): React.CSSProperties {
