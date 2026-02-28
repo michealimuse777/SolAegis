@@ -293,6 +293,18 @@ export default function Dashboard() {
     setCronLoading(false);
   };
 
+  // Remove cron job
+  const removeCronJob = async (name: string, pattern: string) => {
+    try {
+      await fetch(`${API}/api/cron/jobs/${encodeURIComponent(name)}`, {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ pattern }),
+      });
+      fetchCronJobs();
+    } catch { }
+  };
+
   // Scam check
   const checkScam = async () => {
     if (!scamMint.trim()) return;
@@ -742,8 +754,11 @@ export default function Dashboard() {
                         <div style={{ fontWeight: 600, fontSize: 13, color: "#ddd" }}>{job.name}</div>
                         <div style={{ fontSize: 11, color: "#888", marginTop: 2 }}>Pattern: <span style={{ color: "#60a5fa", fontFamily: "monospace" }}>{job.pattern || job.every || "—"}</span></div>
                       </div>
-                      <div style={{ textAlign: "right", fontSize: 11, color: "#666" }}>
-                        {job.next && <div>Next: {new Date(job.next).toLocaleString()}</div>}
+                      <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                        <div style={{ textAlign: "right", fontSize: 11, color: "#666" }}>
+                          {job.next && <div>Next: {new Date(job.next).toLocaleString()}</div>}
+                        </div>
+                        <button onClick={() => removeCronJob(job.name, job.pattern)} style={{ padding: "5px 12px", borderRadius: "6px", border: "1px solid rgba(239,68,68,0.3)", background: "rgba(239,68,68,0.1)", color: "#ef4444", cursor: "pointer", fontSize: 11, fontWeight: 600 }}>Stop</button>
                       </div>
                     </div>
                   ))}

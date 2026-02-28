@@ -18,8 +18,11 @@ import {
     scheduleCronJob,
     createWorker,
     listScheduledJobs,
+    removeScheduledJob,
     shutdownScheduler,
 } from "./scheduler/cronEngine.js";
+import { DecisionMemory } from "./services/decisionMemory.js";
+import { PositionTracker } from "./services/positionTracker.js";
 
 // ─────────── CONFIG ───────────
 const RPC_URL = process.env.SOLANA_RPC_URL || "https://api.devnet.solana.com";
@@ -129,6 +132,7 @@ app.post("/api/agents/:id/transfer-sol", async (req, res) => {
         const { SystemProgram, Transaction, LAMPORTS_PER_SOL } = await import("@solana/web3.js");
         const keypair = agent.getKeypair();
         const lamports = Math.floor(parseFloat(amount) * LAMPORTS_PER_SOL);
+        const startTime = Date.now();
 
         const tx = new Transaction().add(
             SystemProgram.transfer({
@@ -144,9 +148,38 @@ app.post("/api/agents/:id/transfer-sol", async (req, res) => {
         const sig = await connection.sendRawTransaction(tx.serialize());
         await connection.confirmTransaction(sig, "confirmed");
         const newBalance = await connection.getBalance(keypair.publicKey) / 1e9;
+
+        // Record in decision memory
+        const dm = new DecisionMemory(req.params.id);
+        dm.record({
+            action: "transfer-sol",
+            source: "user",
+            result: "success",
+            reason: `Sent ${amount} SOL to ${to.slice(0, 8)}...`,
+            riskScore: 20,
+            confidence: 100,
+            balanceAtTime: newBalance,
+            executionTimeMs: Date.now() - startTime,
+        });
+
+        // Record in position tracker
+        const pt = new PositionTracker(req.params.id);
+        pt.recordTrade("SOL", -parseFloat(amount), 1, "transfer-out");
+
         broadcast("task:executed", { agentId: req.params.id, result: { success: true, action: "transfer-sol", signature: sig } });
         res.json({ success: true, signature: sig, newBalance });
     } catch (err: any) {
+        // Record failure in decision memory
+        const dm = new DecisionMemory(req.params.id);
+        dm.record({
+            action: "transfer-sol",
+            source: "user",
+            result: "failure",
+            reason: err.message,
+            riskScore: 20,
+            confidence: 100,
+            balanceAtTime: 0,
+        });
         res.status(500).json({ success: false, error: err.message });
     }
 });
@@ -355,6 +388,17 @@ app.get("/api/cron/jobs", async (_req, res) => {
     try {
         const jobs = await listScheduledJobs();
         res.json(jobs);
+    } catch (err: any) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+app.delete("/api/cron/jobs/:name", async (req, res) => {
+    try {
+        const { pattern } = req.body || {};
+        if (!pattern) return res.status(400).json({ error: "pattern required in body" });
+        const removed = await removeScheduledJob(req.params.name, pattern);
+        res.json({ success: removed, name: req.params.name });
     } catch (err: any) {
         res.status(500).json({ error: err.message });
     }
