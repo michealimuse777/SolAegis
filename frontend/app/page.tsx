@@ -167,6 +167,16 @@ export default function Dashboard() {
     setLoading(false);
   };
 
+  // Remove agent
+  const removeAgent = async (agentId: string) => {
+    if (!confirm(`Delete agent "${agentId}"? This cannot be undone.`)) return;
+    try {
+      await fetch(`${API}/api/agents/${agentId}`, { method: "DELETE" });
+      if (selectedAgent === agentId) setSelectedAgent(null);
+      fetchAgents();
+    } catch { }
+  };
+
   // Execute action (no params)
   const executeAction = async (agentId: string, action: string) => {
     try {
@@ -427,6 +437,7 @@ export default function Dashboard() {
                     <button onClick={() => openActionForm(a.id, "recover")} style={actionBtn("#ef4444")}>Recover</button>
                     <button onClick={() => { setSelectedAgent(a.id); setTab("portfolio"); }} style={actionBtn("#8b5cf6")}>Portfolio</button>
                     <button onClick={() => { setSelectedAgent(a.id); setTab("decisions"); }} style={actionBtn("#a855f7")}>History</button>
+                    <button onClick={() => removeAgent(a.id)} style={{ ...actionBtn("#ef4444"), opacity: 0.6, fontSize: 10 }}>✕ Delete</button>
                   </div>
                 </div>
               ))}
@@ -437,6 +448,9 @@ export default function Dashboard() {
               <h3 style={{ fontSize: 15, fontWeight: 600, marginBottom: 12, display: "flex", alignItems: "center", gap: 8 }}>
                 <span style={{ width: 8, height: 8, borderRadius: "50%", background: "#10b981", animation: "pulse 2s infinite" }}></span>
                 Live Event Feed
+                {events.length > 0 && (
+                  <button onClick={() => setEvents([])} style={{ marginLeft: "auto", padding: "3px 10px", borderRadius: "6px", border: "1px solid rgba(239,68,68,0.2)", background: "rgba(239,68,68,0.08)", color: "#ef4444", cursor: "pointer", fontSize: 10, fontWeight: 500 }}>Clear</button>
+                )}
               </h3>
               <div style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.06)", borderRadius: "12px", maxHeight: 300, overflow: "auto" }}>
                 {events.length === 0 ? (

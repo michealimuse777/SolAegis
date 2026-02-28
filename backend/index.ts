@@ -150,30 +150,44 @@ app.post("/api/agents/:id/transfer-sol", async (req, res) => {
         const newBalance = await connection.getBalance(keypair.publicKey) / 1e9;
 
         // Record in decision memory
-        const dm = new DecisionMemory(req.params.id);
+        const dm = new DecisionMemory();
         dm.record({
+            timestamp: Date.now(),
+            agentId: req.params.id,
             action: "transfer-sol",
-            source: "user",
+            source: "rules",
+            params: { to, amount },
             result: "success",
             reason: `Sent ${amount} SOL to ${to.slice(0, 8)}...`,
             riskScore: 20,
             confidence: 100,
             balanceAtTime: newBalance,
             executionTimeMs: Date.now() - startTime,
+            txSignature: sig,
         });
 
         // Record in position tracker
-        const pt = new PositionTracker(req.params.id);
-        pt.recordTrade("SOL", -parseFloat(amount), 1, "transfer-out");
+        const pt = new PositionTracker(connection);
+        pt.recordTrade(req.params.id, {
+            timestamp: Date.now(),
+            action: "transfer_out",
+            mint: "SOL",
+            amount: parseFloat(amount),
+            solValue: parseFloat(amount),
+            txSignature: sig,
+        });
 
         broadcast("task:executed", { agentId: req.params.id, result: { success: true, action: "transfer-sol", signature: sig } });
         res.json({ success: true, signature: sig, newBalance });
     } catch (err: any) {
         // Record failure in decision memory
-        const dm = new DecisionMemory(req.params.id);
+        const dm = new DecisionMemory();
         dm.record({
+            timestamp: Date.now(),
+            agentId: req.params.id,
             action: "transfer-sol",
-            source: "user",
+            source: "rules",
+            params: { to: req.body?.to, amount: req.body?.amount },
             result: "failure",
             reason: err.message,
             riskScore: 20,
@@ -184,30 +198,37 @@ app.post("/api/agents/:id/transfer-sol", async (req, res) => {
     }
 });
 
-// ─── Auto Recover (scan + batch close empty accounts) ───
+// ─── Auto Recover (scan + close empty AND dust accounts) ───
 app.post("/api/agents/:id/auto-recover", async (req, res) => {
     try {
         const agent = agentManager.get(req.params.id);
         if (!agent) return res.status(404).json({ error: "Agent not found" });
 
         const keypair = agent.getKeypair();
-        const { findAllRecoverable, batchRecover } = await import("./skills/solRecovery.js");
+        const { findAllRecoverable } = await import("./skills/solRecovery.js");
+        const { createCloseAccountInstruction, TOKEN_PROGRAM_ID } = await import("@solana/spl-token");
+        const { Transaction, LAMPORTS_PER_SOL } = await import("@solana/web3.js");
         const recoverable = await findAllRecoverable(connection, keypair.publicKey);
-        const empty = recoverable.filter(a => a.type === "empty");
 
-        if (empty.length === 0) {
-            return res.json({ success: true, message: "No empty accounts to recover", recovered: 0, solRecovered: 0 });
+        if (recoverable.length === 0) {
+            return res.json({ success: true, message: "No accounts to recover", recovered: 0, solRecovered: 0 });
         }
 
-        const { tx, count, estimatedSOL } = await batchRecover(connection, keypair, empty.map(e => e.address));
+        // Close all recoverable accounts (empty + dust) — up to 10 per tx
+        const batch = recoverable.slice(0, 10);
+        const tx = new Transaction();
+        for (const acct of batch) {
+            tx.add(createCloseAccountInstruction(acct.address, keypair.publicKey, keypair.publicKey));
+        }
         tx.feePayer = keypair.publicKey;
         const { blockhash } = await connection.getLatestBlockhash();
         tx.recentBlockhash = blockhash;
         tx.sign(keypair);
         const sig = await connection.sendRawTransaction(tx.serialize());
         await connection.confirmTransaction(sig, "confirmed");
-        broadcast("task:executed", { agentId: req.params.id, result: { success: true, action: "auto-recover", signature: sig } });
-        res.json({ success: true, signature: sig, recovered: count, solRecovered: estimatedSOL });
+        const estimatedSOL = batch.reduce((s, a) => s + a.rentLamports, 0) / LAMPORTS_PER_SOL;
+        broadcast("task:executed", { agentId: req.params.id, result: { success: true, action: "auto-recover", signature: sig, recovered: batch.length } });
+        res.json({ success: true, signature: sig, recovered: batch.length, solRecovered: estimatedSOL });
     } catch (err: any) {
         res.status(500).json({ success: false, error: err.message });
     }
