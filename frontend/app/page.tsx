@@ -461,7 +461,7 @@ export default function Dashboard() {
                     <span style={{ padding: "2px 8px", borderRadius: "4px", fontSize: 10, fontWeight: 600, minWidth: 90, textAlign: "center", background: eventColor(e.event).bg, color: eventColor(e.event).fg }}>
                       {e.event}
                     </span>
-                    <span style={{ color: "#999", flex: 1, wordBreak: "break-all" }}>{JSON.stringify(e.data)}</span>
+                    <div style={{ color: "#ccc", flex: 1 }}>{formatEventData(e)}</div>
                   </div>
                 ))}
               </div>
@@ -890,6 +890,60 @@ export default function Dashboard() {
       `}</style>
     </div>
   );
+}
+
+// Format live feed event data for human display
+function formatEventData(e: WSEvent): React.ReactNode {
+  const d = e.data as any;
+  const agentLabel = d?.agentId ? <span style={{ color: "#60a5fa", fontWeight: 600 }}>{d.agentId}</span> : null;
+  const r = d?.result;
+
+  // Scan results
+  if (r?.action === "scan_airdrops" && Array.isArray(r?.data)) {
+    const total = r.data.length;
+    const suspicious = r.data.filter((t: any) => t.suspicious).length;
+    const safe = total - suspicious;
+    return (
+      <div>
+        <div>{agentLabel} — Scanned {total} token{total !== 1 ? "s" : ""}: <span style={{ color: "#10b981" }}>{safe} safe</span>{suspicious > 0 && <>, <span style={{ color: "#ef4444" }}>{suspicious} suspicious</span></>}</div>
+        {r.data.map((t: any, i: number) => (
+          <div key={i} style={{ marginTop: 4, padding: "4px 8px", background: t.suspicious ? "rgba(239,68,68,0.08)" : "rgba(16,185,129,0.06)", borderRadius: 4, fontSize: 11 }}>
+            <span style={{ color: t.suspicious ? "#f87171" : "#6ee7b7", fontWeight: 600 }}>{t.suspicious ? "⚠" : "✓"}</span>{" "}
+            <span style={{ fontFamily: "monospace", fontSize: 10, color: "#888" }}>{t.mint?.slice(0, 8)}...</span>{" "}
+            <span style={{ color: "#ddd" }}>{t.amount}</span>
+            {t.reason && <span style={{ color: "#f59e0b", marginLeft: 8 }}>— {t.reason}</span>}
+          </div>
+        ))}
+      </div>
+    );
+  }
+
+  // Transfer results
+  if (r?.action === "transfer" || r?.action === "transfer-sol") {
+    return <div>{agentLabel} — {r.success ? "✓ Transfer sent" : "✗ Transfer failed"}{r.signature && <span style={{ color: "#666", fontFamily: "monospace", fontSize: 10 }}> tx: {r.signature?.slice(0, 12)}...</span>}</div>;
+  }
+
+  // Auto-recover
+  if (r?.action === "auto-recover") {
+    return <div>{agentLabel} — Recovered {r.recovered} account{r.recovered !== 1 ? "s" : ""}{r.signature && <span style={{ color: "#666", fontFamily: "monospace", fontSize: 10 }}> tx: {r.signature?.slice(0, 12)}...</span>}</div>;
+  }
+
+  // DerMercist cycle
+  if (e.event === "dermercist:cycle") {
+    return <div>DerMercist ran on {Array.isArray(d?.results) ? d.results.length : "?"} agent(s)</div>;
+  }
+
+  // Agent created
+  if (e.event === "agent:created") {
+    return <div>New agent <span style={{ color: "#60a5fa", fontWeight: 600 }}>{d?.id}</span> created</div>;
+  }
+
+  // Generic fallback — short summary
+  if (r?.success !== undefined) {
+    return <div>{agentLabel} — {r.success ? "✓" : "✗"} {r.action || "action"}{r.error ? <span style={{ color: "#f87171" }}> — {r.error}</span> : ""}</div>;
+  }
+
+  return <span style={{ color: "#666" }}>{JSON.stringify(d).slice(0, 200)}</span>;
 }
 
 // Helper styles

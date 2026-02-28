@@ -206,7 +206,7 @@ app.post("/api/agents/:id/auto-recover", async (req, res) => {
 
         const keypair = agent.getKeypair();
         const { findAllRecoverable } = await import("./skills/solRecovery.js");
-        const { createCloseAccountInstruction, TOKEN_PROGRAM_ID } = await import("@solana/spl-token");
+        const { createCloseAccountInstruction, createBurnInstruction, TOKEN_PROGRAM_ID } = await import("@solana/spl-token");
         const { Transaction, LAMPORTS_PER_SOL } = await import("@solana/web3.js");
         const recoverable = await findAllRecoverable(connection, keypair.publicKey);
 
@@ -214,10 +214,24 @@ app.post("/api/agents/:id/auto-recover", async (req, res) => {
             return res.json({ success: true, message: "No accounts to recover", recovered: 0, solRecovered: 0 });
         }
 
-        // Close all recoverable accounts (empty + dust) — up to 10 per tx
+        // For each account: burn dust tokens first (if any), then close
         const batch = recoverable.slice(0, 10);
         const tx = new Transaction();
         for (const acct of batch) {
+            if (acct.type === "dust" && acct.balance > 0) {
+                // Get raw token amount (balance * 10^decimals)
+                const tokenAccounts = await connection.getParsedAccountInfo(acct.address);
+                const parsed = (tokenAccounts.value?.data as any)?.parsed?.info;
+                const rawAmount = BigInt(parsed?.tokenAmount?.amount || "0");
+                if (rawAmount > 0n) {
+                    tx.add(createBurnInstruction(
+                        acct.address,
+                        new PublicKey(acct.mint),
+                        keypair.publicKey,
+                        rawAmount,
+                    ));
+                }
+            }
             tx.add(createCloseAccountInstruction(acct.address, keypair.publicKey, keypair.publicKey));
         }
         tx.feePayer = keypair.publicKey;
@@ -241,7 +255,25 @@ app.post("/api/agents/:id/execute", async (req, res) => {
         if (!agent) return res.status(404).json({ error: "Agent not found" });
 
         const { action, params } = req.body;
+        const startTime = Date.now();
         const result = await agent.execute({ action, params });
+
+        // Record in decision memory
+        const dm = new DecisionMemory();
+        dm.record({
+            timestamp: Date.now(),
+            agentId: req.params.id,
+            action,
+            source: "rules",
+            params: params || {},
+            result: result.success ? "success" : "failure",
+            reason: result.error || (result.data ? `Scan found ${Array.isArray(result.data) ? result.data.length : 0} token(s)` : "Executed"),
+            riskScore: 30,
+            confidence: 80,
+            balanceAtTime: 0,
+            executionTimeMs: Date.now() - startTime,
+        });
+
         broadcast("task:executed", { agentId: req.params.id, result });
         res.json(result);
     } catch (err: any) {
