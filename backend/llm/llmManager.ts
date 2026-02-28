@@ -18,7 +18,7 @@ export class LLMManager {
     constructor(
         private keyStore: KeyStore,
         private provider: string = "gemini",
-        private model: string = "gemini-pro"
+        private model: string = "gemini-2.5-flash"
     ) { }
 
     /**
@@ -80,15 +80,20 @@ export class LLMManager {
         apiKey: string,
         prompt: string
     ): Promise<LLMResponse> {
-        const url = this.getProviderUrl();
+        const url = this.getProviderUrl(apiKey);
         const body = this.formatRequestBody(prompt);
+        const headers: Record<string, string> = {
+            "Content-Type": "application/json",
+        };
+
+        // Gemini uses ?key= query param; other providers use Bearer token
+        if (this.provider !== "gemini") {
+            headers["Authorization"] = `Bearer ${apiKey}`;
+        }
 
         const res = await fetch(url, {
             method: "POST",
-            headers: {
-                "Content-Type": "application/json",
-                Authorization: `Bearer ${apiKey}`,
-            },
+            headers,
             body: JSON.stringify(body),
         });
 
@@ -97,17 +102,18 @@ export class LLMManager {
         }
 
         if (!res.ok) {
-            throw new Error(`API error: ${res.status} ${res.statusText}`);
+            const errBody = await res.text().catch(() => "");
+            throw new Error(`API error: ${res.status} ${res.statusText} — ${errBody.slice(0, 200)}`);
         }
 
         const data = await res.json();
         return this.parseResponse(data);
     }
 
-    private getProviderUrl(): string {
+    private getProviderUrl(apiKey: string): string {
         switch (this.provider) {
             case "gemini":
-                return `https://generativelanguage.googleapis.com/v1beta/models/${this.model}:generateContent`;
+                return `https://generativelanguage.googleapis.com/v1beta/models/${this.model}:generateContent?key=${apiKey}`;
             case "openai":
                 return "https://api.openai.com/v1/chat/completions";
             default:
