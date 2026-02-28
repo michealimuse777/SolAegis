@@ -1,0 +1,214 @@
+import dotenv from "dotenv";
+dotenv.config();
+
+import express from "express";
+import cors from "cors";
+import { WebSocketServer, WebSocket } from "ws";
+import { Connection } from "@solana/web3.js";
+import { AgentManager } from "./core/agentManager.js";
+import { KeyStore } from "./llm/keyStore.js";
+import { LLMManager } from "./llm/llmManager.js";
+import { LLMInterface } from "./core/dermercist/llmInterface.js";
+import { DerMercist } from "./core/dermercist/index.js";
+import {
+    initScheduler,
+    scheduleCronJob,
+    createWorker,
+    listScheduledJobs,
+    shutdownScheduler,
+} from "./scheduler/cronEngine.js";
+
+// ─────────── CONFIG ───────────
+const RPC_URL = process.env.SOLANA_RPC_URL || "https://api.devnet.solana.com";
+const PORT = parseInt(process.env.PORT || "4000", 10);
+const WS_PORT = parseInt(process.env.WS_PORT || "4001", 10);
+const REDIS_URL = process.env.REDIS_URL || "redis://localhost:6379";
+
+// ─────────── INIT ───────────
+const connection = new Connection(RPC_URL, "confirmed");
+const agentManager = new AgentManager(connection);
+
+// LLM setup
+const keyStore = new KeyStore();
+keyStore.loadFromEnv();
+const llmManager = new LLMManager(
+    keyStore,
+    process.env.LLM_PRIMARY_PROVIDER || "gemini",
+    process.env.LLM_PRIMARY_MODEL || "gemini-pro"
+);
+const llmInterface = new LLMInterface(llmManager);
+const derMercist = new DerMercist(
+    agentManager.getDeFiSkill(),
+    llmInterface
+);
+
+// ─────────── EXPRESS ───────────
+const app = express();
+app.use(cors());
+app.use(express.json());
+
+// WebSocket clients for live updates
+const wsClients = new Set<WebSocket>();
+
+function broadcast(event: string, data: any) {
+    const message = JSON.stringify({ event, data, timestamp: Date.now() });
+    for (const client of wsClients) {
+        if (client.readyState === WebSocket.OPEN) {
+            client.send(message);
+        }
+    }
+}
+
+// ─── Health ───
+app.get("/api/health", (_req, res) => {
+    res.json({ status: "ok", rpc: RPC_URL, agents: agentManager.list().length });
+});
+
+// ─── Agents ───
+app.get("/api/agents", async (_req, res) => {
+    try {
+        const states = await agentManager.listStates();
+        res.json(states);
+    } catch (err: any) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+app.post("/api/agents", (req, res) => {
+    try {
+        const { id } = req.body;
+        if (!id) return res.status(400).json({ error: "Agent ID required" });
+        const agent = agentManager.create(id);
+        broadcast("agent:created", { id, publicKey: agent.getPublicKey() });
+        res.json({ id, publicKey: agent.getPublicKey() });
+    } catch (err: any) {
+        res.status(400).json({ error: err.message });
+    }
+});
+
+app.delete("/api/agents/:id", (req, res) => {
+    const removed = agentManager.remove(req.params.id);
+    if (removed) {
+        broadcast("agent:removed", { id: req.params.id });
+        res.json({ removed: true });
+    } else {
+        res.status(404).json({ error: "Agent not found" });
+    }
+});
+
+// ─── Tasks ───
+app.post("/api/agents/:id/execute", async (req, res) => {
+    try {
+        const agent = agentManager.get(req.params.id);
+        if (!agent) return res.status(404).json({ error: "Agent not found" });
+
+        const { action, params } = req.body;
+        const result = await agent.execute({ action, params });
+        broadcast("task:executed", { agentId: req.params.id, result });
+        res.json(result);
+    } catch (err: any) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// ─── DerMercist ───
+app.post("/api/dermercist/run", async (_req, res) => {
+    try {
+        const agents = agentManager.list();
+        const results = await derMercist.runAll(agents);
+        broadcast("dermercist:cycle", { results });
+        res.json(results);
+    } catch (err: any) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+app.post("/api/dermercist/run/:id", async (req, res) => {
+    try {
+        const agent = agentManager.get(req.params.id);
+        if (!agent) return res.status(404).json({ error: "Agent not found" });
+
+        const result = await derMercist.run(agent);
+        broadcast("dermercist:result", { result });
+        res.json(result);
+    } catch (err: any) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// ─── Skills ───
+app.get("/api/skills", (_req, res) => {
+    const doc = agentManager.getDeFiSkill().getSkillsDocumentation();
+    res.json({ skills: doc });
+});
+
+// ─── Scheduler ───
+app.get("/api/scheduler/jobs", async (_req, res) => {
+    const jobs = await listScheduledJobs();
+    res.json(jobs);
+});
+
+app.post("/api/scheduler/schedule", async (req, res) => {
+    try {
+        const { agentId, action, params, cron } = req.body;
+        const jobId = await scheduleCronJob(
+            `${action}-${agentId}`,
+            { agentId, action, params },
+            cron
+        );
+        res.json({ jobId });
+    } catch (err: any) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// ─── LLM Stats ───
+app.get("/api/llm/stats", (_req, res) => {
+    res.json(llmManager.getUsageStats());
+});
+
+// ─────────── START ───────────
+async function start() {
+    console.log("\n╔══════════════════════════════════════╗");
+    console.log("║       🛡️  SolAegis Backend  🛡️         ║");
+    console.log("╚══════════════════════════════════════╝\n");
+
+    // Init scheduler (graceful degradation)
+    const redisReady = await initScheduler(REDIS_URL);
+    if (redisReady) {
+        createWorker(async (data) => {
+            const agent = agentManager.get(data.agentId);
+            if (agent) {
+                const result = await derMercist.run(agent);
+                broadcast("cron:executed", { result });
+            }
+        });
+    }
+
+    // Start Express
+    app.listen(PORT, () => {
+        console.log(`[Server] REST API → http://localhost:${PORT}`);
+    });
+
+    // Start WebSocket
+    const wss = new WebSocketServer({ port: WS_PORT });
+    wss.on("connection", (ws) => {
+        wsClients.add(ws);
+        console.log("[WS] Client connected");
+        ws.on("close", () => wsClients.delete(ws));
+    });
+    console.log(`[Server] WebSocket → ws://localhost:${WS_PORT}`);
+    console.log(`[Server] RPC       → ${RPC_URL}`);
+    console.log(`[Server] LLM Keys  → ${keyStore.totalKeys()} loaded\n`);
+
+    // Graceful shutdown
+    process.on("SIGINT", async () => {
+        console.log("\nShutting down...");
+        await shutdownScheduler();
+        process.exit(0);
+    });
+}
+
+start().catch(console.error);
+
+export { app, agentManager, derMercist };
