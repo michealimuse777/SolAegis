@@ -4,7 +4,7 @@ import { useState, useEffect, useRef, useCallback } from "react";
 
 const API = "http://localhost:4000";
 
-type TabType = "dashboard" | "portfolio" | "decisions" | "scamcheck" | "recovery" | "scheduler";
+type TabType = "dashboard" | "agent" | "portfolio" | "decisions" | "scamcheck" | "recovery" | "scheduler";
 
 interface Agent {
   id: string;
@@ -13,6 +13,20 @@ interface Agent {
   pendingTx: number;
   lastAction?: string;
   skills: string[];
+  config?: {
+    role: string;
+    maxSolPerTx: number;
+    dailyTxLimit: number;
+    allowedActions: string[];
+    riskProfile: string;
+    createdAt: number;
+  };
+}
+
+interface ChatMessage {
+  role: "user" | "assistant";
+  content: string;
+  timestamp: number;
 }
 
 interface WSEvent {
@@ -109,7 +123,21 @@ export default function Dashboard() {
   const [actionLoading, setActionLoading] = useState(false);
   const [transferMode, setTransferMode] = useState<"sol" | "spl">("sol");
 
+  // Chat state
+  const [chatOpen, setChatOpen] = useState(false);
+  const [chatAgentId, setChatAgentId] = useState("");
+  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
+  const [chatInput, setChatInput] = useState("");
+  const [chatLoading, setChatLoading] = useState(false);
+
+  // Agent creation form
+  const [newRole, setNewRole] = useState<string>("custom");
+  const [newMaxSol, setNewMaxSol] = useState(1.0);
+  const [newDailyLimit, setNewDailyLimit] = useState(5);
+  const [newAllowedActions, setNewAllowedActions] = useState<string[]>(["transfer", "recover", "scan_airdrops", "scam_check"]);
+
   const wsRef = useRef<WebSocket | null>(null);
+  const chatEndRef = useRef<HTMLDivElement | null>(null);
 
   // Fetch agents
   const fetchAgents = useCallback(async () => {
@@ -140,7 +168,12 @@ export default function Dashboard() {
     return () => ws.close();
   }, []);
 
-  // Create agent
+  // Auto scroll chat
+  useEffect(() => {
+    chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [chatMessages]);
+
+  // Create agent with role + config
   const createAgent = async () => {
     if (!newAgentId.trim()) return;
     setLoading(true);
@@ -148,13 +181,50 @@ export default function Dashboard() {
       await fetch(`${API}/api/agents`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id: newAgentId }),
+        body: JSON.stringify({
+          id: newAgentId,
+          role: newRole,
+          maxSolPerTx: newMaxSol,
+          dailyTxLimit: newDailyLimit,
+          allowedActions: newAllowedActions,
+        }),
       });
       setNewAgentId("");
       setShowModal(false);
       fetchAgents();
     } catch { }
     setLoading(false);
+  };
+
+  // Send chat message
+  const sendChat = async () => {
+    if (!chatInput.trim() || !chatAgentId) return;
+    const userMsg: ChatMessage = { role: "user", content: chatInput, timestamp: Date.now() };
+    setChatMessages(prev => [...prev, userMsg]);
+    setChatInput("");
+    setChatLoading(true);
+    try {
+      const res = await fetch(`${API}/api/agents/${chatAgentId}/chat`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ message: userMsg.content }),
+      });
+      const data = await res.json();
+      const botMsg: ChatMessage = { role: "assistant", content: data.reply || data.error || "No response", timestamp: Date.now() };
+      setChatMessages(prev => [...prev, botMsg]);
+      // Refresh agents if action was executed
+      if (data.executionResult) fetchAgents();
+    } catch (err: any) {
+      setChatMessages(prev => [...prev, { role: "assistant", content: `Error: ${err.message}`, timestamp: Date.now() }]);
+    }
+    setChatLoading(false);
+  };
+
+  // Open chat for agent
+  const openChat = (agentId: string) => {
+    setChatAgentId(agentId);
+    setChatMessages([]);
+    setChatOpen(true);
   };
 
   // Run DerMercist
@@ -202,6 +272,18 @@ export default function Dashboard() {
       if (actionModal.type === "transfer" && transferMode === "sol") {
         url = `${API}/api/agents/${actionModal.agentId}/transfer-sol`;
         body = { to: actionParams.to, amount: actionParams.amount };
+      }
+
+      // Swap uses dedicated endpoint
+      if (actionModal.type === "swap") {
+        url = `${API}/api/agents/${actionModal.agentId}/swap`;
+        body = { inputMint: actionParams.inputMint, outputMint: actionParams.outputMint, amount: actionParams.amount };
+      }
+
+      // Add liquidity uses dedicated endpoint
+      if (actionModal.type === "liquidity") {
+        url = `${API}/api/agents/${actionModal.agentId}/liquidity/add`;
+        body = { poolId: actionParams.poolId, amountA: actionParams.amountA, amountB: actionParams.amountB };
       }
 
       // Auto-recover uses dedicated endpoint
@@ -365,14 +447,14 @@ export default function Dashboard() {
 
       {/* Tab Navigation */}
       <nav style={{ display: "flex", gap: "4px", padding: "12px 24px", borderBottom: "1px solid rgba(255,255,255,0.04)" }}>
-        {(["dashboard", "portfolio", "decisions", "scamcheck", "recovery", "scheduler"] as TabType[]).map(t => (
+        {(["dashboard", "agent", "portfolio", "decisions", "scamcheck", "recovery", "scheduler"] as TabType[]).map(t => (
           <button key={t} onClick={() => setTab(t)} style={{
             padding: "8px 16px", borderRadius: "6px", border: "none", cursor: "pointer", fontSize: 13, fontWeight: 500,
             background: tab === t ? "rgba(59,130,246,0.15)" : "transparent",
             color: tab === t ? "#60a5fa" : "#888",
             transition: "all 0.2s",
           }}>
-            {{ dashboard: "Dashboard", portfolio: "Portfolio", decisions: "Decisions", scamcheck: "Scam Checker", recovery: "Recovery", scheduler: "Scheduler" }[t]}
+            {{ dashboard: "Dashboard", agent: "Agent", portfolio: "Portfolio", decisions: "Decisions", scamcheck: "Scam Checker", recovery: "Recovery", scheduler: "Scheduler" }[t]}
           </button>
         ))}
       </nav>
@@ -413,32 +495,28 @@ export default function Dashboard() {
               ))}
             </div>
 
-            {/* Agent Cards */}
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))", gap: "16px", marginBottom: "24px" }}>
+            {/* Agent Cards — Minimal */}
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: "14px", marginBottom: "24px" }}>
               {agents.map(a => (
-                <div key={a.id} style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)", borderRadius: "14px", padding: "20px", backdropFilter: "blur(10px)", transition: "border-color 0.2s" }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
-                    <div style={{ fontWeight: 700, fontSize: 16 }}>{a.id}</div>
-                    <div style={{ padding: "3px 10px", borderRadius: "12px", fontSize: 11, background: a.pendingTx > 0 ? "rgba(245,158,11,0.15)" : "rgba(16,185,129,0.15)", color: a.pendingTx > 0 ? "#f59e0b" : "#10b981" }}>
-                      {a.pendingTx > 0 ? "Executing" : "Ready"}
+                <div key={a.id} style={{ background: "rgba(255,255,255,0.03)", border: selectedAgent === a.id ? "1px solid rgba(99,102,241,0.3)" : "1px solid rgba(255,255,255,0.06)", borderRadius: "14px", padding: "18px", backdropFilter: "blur(10px)", transition: "border-color 0.2s", cursor: "pointer" }}
+                  onClick={() => { setSelectedAgent(a.id); openChat(a.id); setTab("agent"); }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                      <div style={{
+                        width: 32, height: 32, borderRadius: "10px", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 16,
+                        background: a.config?.role === "trader" ? "rgba(6,182,212,0.12)" : a.config?.role === "monitor" ? "rgba(168,85,247,0.12)" : a.config?.role === "recovery" ? "rgba(245,158,11,0.12)" : "rgba(59,130,246,0.12)",
+                      }}>{a.config?.role === "trader" ? "🤖" : a.config?.role === "monitor" ? "👁" : a.config?.role === "recovery" ? "🔧" : "⚡"}</div>
+                      <div>
+                        <div style={{ fontWeight: 700, fontSize: 15 }}>{a.id}</div>
+                        <div style={{ fontSize: 10, color: "#666", textTransform: "uppercase", letterSpacing: "0.5px" }}>{a.config?.role || "agent"}</div>
+                      </div>
+                    </div>
+                    <div style={{ padding: "3px 10px", borderRadius: "12px", fontSize: 10, background: a.pendingTx > 0 ? "rgba(245,158,11,0.15)" : "rgba(16,185,129,0.15)", color: a.pendingTx > 0 ? "#f59e0b" : "#10b981" }}>
+                      {a.pendingTx > 0 ? "Busy" : "Ready"}
                     </div>
                   </div>
-                  <div style={{ fontSize: 12, color: "#666", fontFamily: "monospace", marginBottom: 12, wordBreak: "break-all" }}>{a.publicKey}</div>
-                  <div style={{ fontSize: 28, fontWeight: 700, color: "#10b981", marginBottom: 12 }}>{a.balance.toFixed(4)} SOL</div>
-                  <div style={{ display: "flex", gap: "6px", flexWrap: "wrap", marginBottom: 12 }}>
-                    {a.skills.map(s => (
-                      <span key={s} style={{ padding: "2px 8px", borderRadius: "4px", fontSize: 10, background: "rgba(59,130,246,0.1)", color: "#60a5fa", border: "1px solid rgba(59,130,246,0.2)" }}>{s}</span>
-                    ))}
-                  </div>
-                  <div style={{ display: "flex", gap: "6px", flexWrap: "wrap" }}>
-                    <button onClick={() => executeAction(a.id, "scan_airdrops")} style={actionBtn("#3b82f6")}>Scan</button>
-                    <button onClick={() => requestAirdrop(a.id)} style={actionBtn("#10b981")}>Airdrop</button>
-                    <button onClick={() => openActionForm(a.id, "transfer")} style={actionBtn("#f59e0b")}>Transfer</button>
-                    <button onClick={() => openActionForm(a.id, "recover")} style={actionBtn("#ef4444")}>Recover</button>
-                    <button onClick={() => { setSelectedAgent(a.id); setTab("portfolio"); }} style={actionBtn("#8b5cf6")}>Portfolio</button>
-                    <button onClick={() => { setSelectedAgent(a.id); setTab("decisions"); }} style={actionBtn("#a855f7")}>History</button>
-                    <button onClick={() => removeAgent(a.id)} style={{ ...actionBtn("#ef4444"), opacity: 0.6, fontSize: 10 }}>✕ Delete</button>
-                  </div>
+                  <div style={{ fontSize: 24, fontWeight: 700, color: "#10b981", marginBottom: 8 }}>{a.balance.toFixed(4)} SOL</div>
+                  <button onClick={(e) => { e.stopPropagation(); setSelectedAgent(a.id); openChat(a.id); setTab("agent"); }} style={{ width: "100%", padding: "9px", borderRadius: "8px", border: "none", background: "linear-gradient(135deg, rgba(99,102,241,0.15), rgba(139,92,246,0.15))", color: "#a78bfa", cursor: "pointer", fontSize: 13, fontWeight: 600, letterSpacing: "0.3px" }}>Open Agent →</button>
                 </div>
               ))}
             </div>
@@ -468,6 +546,164 @@ export default function Dashboard() {
             </div>
           </>
         )}
+
+        {/* ========== AGENT DETAIL TAB ========== */}
+        {tab === "agent" && selectedAgent && (() => {
+          const ag = agents.find(a => a.id === selectedAgent);
+          if (!ag) return <div style={{ color: "#888", textAlign: "center", padding: 40 }}>Select an agent from the Dashboard.</div>;
+          return (
+            <div>
+              {/* Agent Header */}
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                  <div style={{
+                    width: 44, height: 44, borderRadius: "12px", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 22,
+                    background: ag.config?.role === "trader" ? "rgba(6,182,212,0.12)" : ag.config?.role === "monitor" ? "rgba(168,85,247,0.12)" : ag.config?.role === "recovery" ? "rgba(245,158,11,0.12)" : "rgba(59,130,246,0.12)",
+                  }}>{ag.config?.role === "trader" ? "🤖" : ag.config?.role === "monitor" ? "👁" : ag.config?.role === "recovery" ? "🔧" : "⚡"}</div>
+                  <div>
+                    <h2 style={{ fontSize: 22, fontWeight: 700, margin: 0 }}>{ag.id}</h2>
+                    <div style={{ fontSize: 11, color: "#666", textTransform: "uppercase", letterSpacing: "0.5px" }}>{ag.config?.role || "agent"} • {ag.balance.toFixed(4)} SOL</div>
+                  </div>
+                </div>
+                <div style={{ display: "flex", gap: 8 }}>
+                  <button onClick={() => requestAirdrop(ag.id)} style={{ padding: "8px 16px", borderRadius: "8px", border: "1px solid rgba(16,185,129,0.3)", background: "rgba(16,185,129,0.1)", color: "#10b981", cursor: "pointer", fontSize: 12, fontWeight: 600 }}>Airdrop 1 SOL</button>
+                  <button onClick={() => removeAgent(ag.id)} style={{ padding: "8px 16px", borderRadius: "8px", border: "1px solid rgba(239,68,68,0.2)", background: "rgba(239,68,68,0.06)", color: "#ef4444", cursor: "pointer", fontSize: 12, fontWeight: 500 }}>Delete</button>
+                </div>
+              </div>
+
+              {/* Two Column: Config | Chat */}
+              <div style={{ display: "grid", gridTemplateColumns: "340px 1fr", gap: 16, marginBottom: 20 }}>
+
+                {/* LEFT: Config Panel */}
+                <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+                  {/* Wallet */}
+                  <div style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)", borderRadius: "12px", padding: "16px" }}>
+                    <div style={{ fontSize: 11, color: "#666", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 6 }}>Wallet</div>
+                    <div style={{ fontSize: 11, fontFamily: "monospace", color: "#aaa", wordBreak: "break-all" }}>{ag.publicKey}</div>
+                  </div>
+
+                  {/* Config */}
+                  <div style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)", borderRadius: "12px", padding: "16px" }}>
+                    <div style={{ fontSize: 11, color: "#666", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 12 }}>Configuration</div>
+                    {ag.config ? (
+                      <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                        <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13 }}>
+                          <span style={{ color: "#888" }}>Max SOL/tx</span>
+                          <span style={{ color: "#e0e0e0", fontWeight: 600 }}>{ag.config.maxSolPerTx}</span>
+                        </div>
+                        <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13 }}>
+                          <span style={{ color: "#888" }}>Daily Limit</span>
+                          <span style={{ color: "#e0e0e0", fontWeight: 600 }}>{ag.config.dailyTxLimit} txs</span>
+                        </div>
+                        <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13 }}>
+                          <span style={{ color: "#888" }}>Risk Profile</span>
+                          <span style={{ color: ag.config.riskProfile === "low" ? "#10b981" : ag.config.riskProfile === "high" ? "#ef4444" : "#f59e0b", fontWeight: 600 }}>{ag.config.riskProfile}</span>
+                        </div>
+                        <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13 }}>
+                          <span style={{ color: "#888" }}>Created</span>
+                          <span style={{ color: "#aaa", fontSize: 11 }}>{new Date(ag.config.createdAt).toLocaleDateString()}</span>
+                        </div>
+                      </div>
+                    ) : <div style={{ fontSize: 12, color: "#555" }}>No config loaded</div>}
+                  </div>
+
+                  {/* Allowed Actions */}
+                  <div style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)", borderRadius: "12px", padding: "16px" }}>
+                    <div style={{ fontSize: 11, color: "#666", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 10 }}>Allowed Actions</div>
+                    <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                      {ag.skills.map(s => (
+                        <span key={s} style={{ padding: "4px 10px", borderRadius: "6px", fontSize: 11, fontWeight: 500, background: "rgba(99,102,241,0.1)", color: "#818cf8", border: "1px solid rgba(99,102,241,0.2)" }}>{s}</span>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Quick Tip */}
+                  <div style={{ background: "rgba(99,102,241,0.05)", border: "1px solid rgba(99,102,241,0.12)", borderRadius: "12px", padding: "14px", fontSize: 11, color: "#888", lineHeight: 1.6 }}>
+                    💡 <strong style={{ color: "#a78bfa" }}>Tip:</strong> Use chat to interact with this agent. Try <em>"What can you do?"</em>, <em>"Send 0.1 SOL to..."</em>, or <em>"Switch to low risk mode"</em>.
+                  </div>
+                </div>
+
+                {/* RIGHT: Inline Chat */}
+                <div style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.06)", borderRadius: "14px", display: "flex", flexDirection: "column", minHeight: 480 }}>
+                  {/* Chat Header */}
+                  <div style={{ padding: "14px 18px", borderBottom: "1px solid rgba(255,255,255,0.06)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                    <div style={{ fontSize: 14, fontWeight: 700 }}>💬 Chat with {ag.id}</div>
+                    <div style={{ fontSize: 10, color: "#666" }}>policy guarded • {ag.config?.role || "agent"}</div>
+                  </div>
+
+                  {/* Messages */}
+                  <div style={{ flex: 1, overflow: "auto", padding: "14px 16px", display: "flex", flexDirection: "column", gap: 10 }}>
+                    {chatMessages.length === 0 && chatAgentId === ag.id && (
+                      <div style={{ textAlign: "center", color: "#555", fontSize: 12, padding: 30 }}>
+                        Start chatting with <strong>{ag.id}</strong>.<br /><br />
+                        <span style={{ color: "#818cf8" }}>"What can you do?"</span><br />
+                        <span style={{ color: "#818cf8" }}>"Airdrop me some SOL"</span><br />
+                        <span style={{ color: "#818cf8" }}>"Send 0.1 SOL to ..."</span><br />
+                        <span style={{ color: "#818cf8" }}>"Switch to low risk mode"</span><br />
+                        <span style={{ color: "#818cf8" }}>"Reload your skills"</span>
+                      </div>
+                    )}
+                    {chatAgentId === ag.id && chatMessages.map((m, i) => (
+                      <div key={i} style={{ alignSelf: m.role === "user" ? "flex-end" : "flex-start", maxWidth: "80%" }}>
+                        <div style={{
+                          padding: "10px 14px", borderRadius: m.role === "user" ? "14px 14px 4px 14px" : "14px 14px 14px 4px",
+                          background: m.role === "user" ? "rgba(99,102,241,0.2)" : "rgba(255,255,255,0.04)",
+                          border: `1px solid ${m.role === "user" ? "rgba(99,102,241,0.3)" : "rgba(255,255,255,0.06)"}`,
+                          fontSize: 13, lineHeight: 1.6, whiteSpace: "pre-wrap", color: "#ddd",
+                        }}>{m.content}</div>
+                        <div style={{ fontSize: 9, color: "#555", marginTop: 2, textAlign: m.role === "user" ? "right" : "left" }}>
+                          {new Date(m.timestamp).toLocaleTimeString()}
+                        </div>
+                      </div>
+                    ))}
+                    {chatLoading && (
+                      <div style={{ alignSelf: "flex-start", padding: "10px 14px", borderRadius: "14px", background: "rgba(255,255,255,0.04)", fontSize: 13, color: "#888" }}>
+                        Thinking...
+                      </div>
+                    )}
+                    <div ref={chatEndRef} />
+                  </div>
+
+                  {/* Input */}
+                  <div style={{ padding: "12px 16px", borderTop: "1px solid rgba(255,255,255,0.06)", display: "flex", gap: 8 }}>
+                    <input
+                      value={chatAgentId === ag.id ? chatInput : ""}
+                      onChange={e => { setChatAgentId(ag.id); setChatInput(e.target.value); }}
+                      onFocus={() => { if (chatAgentId !== ag.id) { setChatAgentId(ag.id); setChatMessages([]); } }}
+                      onKeyDown={e => e.key === "Enter" && !e.shiftKey && sendChat()}
+                      placeholder="Type a message..."
+                      style={{ flex: 1, padding: "10px 14px", borderRadius: "10px", border: "1px solid rgba(139,92,246,0.2)", background: "rgba(255,255,255,0.03)", color: "#e0e0e0", fontSize: 13, outline: "none" }}
+                      disabled={chatLoading}
+                    />
+                    <button onClick={() => { setChatAgentId(ag.id); sendChat(); }} disabled={chatLoading || !chatInput.trim()} style={{ padding: "10px 18px", borderRadius: "10px", border: "none", background: "linear-gradient(135deg, #6366f1, #8b5cf6)", color: "#fff", cursor: "pointer", fontWeight: 600, fontSize: 13, opacity: !chatInput.trim() ? 0.5 : 1 }}>Send</button>
+                  </div>
+                </div>
+              </div>
+
+              {/* Activity Log */}
+              <div style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.06)", borderRadius: "12px", padding: "16px" }}>
+                <div style={{ fontSize: 11, color: "#666", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 12, display: "flex", alignItems: "center", gap: 8 }}>
+                  <span style={{ width: 6, height: 6, borderRadius: "50%", background: "#10b981", animation: "pulse 2s infinite" }}></span>
+                  Activity Log
+                </div>
+                <div style={{ maxHeight: 200, overflow: "auto" }}>
+                  {events.filter(e => {
+                    const d = e.data as any;
+                    return d?.agentId === ag.id || d?.id === ag.id;
+                  }).length === 0 ? (
+                    <div style={{ fontSize: 12, color: "#555", padding: 12, textAlign: "center" }}>No activity yet for this agent.</div>
+                  ) : events.filter(e => { const d = e.data as any; return d?.agentId === ag.id || d?.id === ag.id; }).map((e, i) => (
+                    <div key={i} style={{ display: "flex", gap: 10, alignItems: "center", padding: "8px 0", borderBottom: "1px solid rgba(255,255,255,0.03)", fontSize: 12 }}>
+                      <span style={{ color: "#555", fontFamily: "monospace", fontSize: 10, minWidth: 55 }}>{new Date(e.timestamp).toLocaleTimeString()}</span>
+                      <span style={{ padding: "2px 8px", borderRadius: "4px", fontSize: 10, fontWeight: 600, background: eventColor(e.event).bg, color: eventColor(e.event).fg }}>{e.event}</span>
+                      <span style={{ color: "#aaa", flex: 1 }}>{formatEventData(e)}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          );
+        })()}
 
         {/* ========== PORTFOLIO TAB ========== */}
         {tab === "portfolio" && selectedAgent && (
@@ -735,7 +971,7 @@ export default function Dashboard() {
                     <option value="scan_airdrops">Scan Airdrops</option>
                     <option value="recover">Recover SOL</option>
                     <option value="transfer">Transfer</option>
-                    <option value="swap">Swap</option>
+                    <option value="scam_check">Scam Check</option>
                   </select>
                 </div>
               </div>
@@ -784,22 +1020,120 @@ export default function Dashboard() {
 
       </main>
 
-      {/* Create Agent Modal */}
+      {/* Create Agent Modal — with Role + Config */}
       {showModal && (
         <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.7)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 200 }} onClick={() => setShowModal(false)}>
-          <div onClick={e => e.stopPropagation()} style={{ background: "#1a1a2e", border: "1px solid rgba(255,255,255,0.1)", borderRadius: "16px", padding: "28px", width: 380, backdropFilter: "blur(20px)" }}>
+          <div onClick={e => e.stopPropagation()} style={{ background: "#1a1a2e", border: "1px solid rgba(255,255,255,0.1)", borderRadius: "16px", padding: "28px", width: 460, backdropFilter: "blur(20px)", maxHeight: "85vh", overflow: "auto" }}>
             <h3 style={{ fontSize: 18, fontWeight: 700, marginBottom: 16 }}>Create Agent</h3>
-            <input
-              value={newAgentId}
-              onChange={e => setNewAgentId(e.target.value)}
-              placeholder="Agent ID (e.g., Trader, Scout)"
-              style={{ width: "100%", padding: "10px 14px", borderRadius: "8px", border: "1px solid rgba(255,255,255,0.1)", background: "rgba(255,255,255,0.05)", color: "#e0e0e0", fontSize: 14, marginBottom: 14, outline: "none", boxSizing: "border-box" }}
-              onKeyDown={e => e.key === "Enter" && createAgent()}
-            />
-            <div style={{ display: "flex", gap: "10px", justifyContent: "flex-end" }}>
-              <button onClick={() => setShowModal(false)} style={{ padding: "8px 18px", borderRadius: "8px", border: "1px solid rgba(255,255,255,0.1)", background: "transparent", color: "#888", cursor: "pointer", fontSize: 13 }}>Cancel</button>
-              <button onClick={createAgent} disabled={loading} style={{ padding: "8px 18px", borderRadius: "8px", border: "none", background: "linear-gradient(135deg, #3b82f6, #8b5cf6)", color: "#fff", cursor: "pointer", fontWeight: 600, fontSize: 13 }}>Create</button>
+            <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+              <div>
+                <label style={{ fontSize: 11, color: "#888", display: "block", marginBottom: 4 }}>Agent Name</label>
+                <input value={newAgentId} onChange={e => setNewAgentId(e.target.value)} placeholder="e.g., TraderOne, Scout" style={inputStyle} onKeyDown={e => e.key === "Enter" && createAgent()} />
+              </div>
+              <div>
+                <label style={{ fontSize: 11, color: "#888", display: "block", marginBottom: 6 }}>Role</label>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                  {["trader", "monitor", "recovery", "custom"].map(r => (
+                    <button key={r} onClick={() => {
+                      setNewRole(r);
+                      if (r === "trader") { setNewMaxSol(0.5); setNewDailyLimit(10); setNewAllowedActions(["transfer", "scan_airdrops", "scam_check", "recover"]); }
+                      if (r === "monitor") { setNewMaxSol(0); setNewDailyLimit(0); setNewAllowedActions(["scan_airdrops", "scam_check"]); }
+                      if (r === "recovery") { setNewMaxSol(0.1); setNewDailyLimit(20); setNewAllowedActions(["recover", "transfer", "scam_check"]); }
+                      if (r === "custom") { setNewMaxSol(1.0); setNewDailyLimit(5); setNewAllowedActions(["transfer", "recover", "scan_airdrops", "scam_check"]); }
+                    }} style={{
+                      padding: "10px", borderRadius: "8px", border: "1px solid", cursor: "pointer", fontSize: 13, fontWeight: 600, textTransform: "capitalize",
+                      borderColor: newRole === r ? "rgba(99,102,241,0.5)" : "rgba(255,255,255,0.1)",
+                      background: newRole === r ? "rgba(99,102,241,0.15)" : "rgba(255,255,255,0.03)",
+                      color: newRole === r ? "#818cf8" : "#888",
+                    }}>{r === "trader" ? "🤖 Trader" : r === "monitor" ? "👁 Monitor" : r === "recovery" ? "🔧 Recovery" : "⚡ Custom"}</button>
+                  ))}
+                </div>
+                <div style={{ fontSize: 11, color: "#555", marginTop: 6 }}>
+                  {{ trader: "Trading agent with transfer & scam detection capabilities.", monitor: "Read-only agent that scans airdrops & checks token safety.", recovery: "Closes empty accounts to reclaim rent SOL.", custom: "Fully configurable agent with all capabilities." }[newRole]}
+                </div>
+              </div>
+              <div>
+                <label style={{ fontSize: 11, color: "#888", display: "block", marginBottom: 4 }}>Max SOL per Transaction: <span style={{ color: "#60a5fa", fontWeight: 600 }}>{newMaxSol}</span></label>
+                <input type="range" min="0" max="5" step="0.1" value={newMaxSol} onChange={e => setNewMaxSol(parseFloat(e.target.value))} style={{ width: "100%", accentColor: "#6366f1" }} />
+              </div>
+              <div>
+                <label style={{ fontSize: 11, color: "#888", display: "block", marginBottom: 4 }}>Daily Transaction Limit: <span style={{ color: "#60a5fa", fontWeight: 600 }}>{newDailyLimit}</span></label>
+                <input type="range" min="0" max="50" step="1" value={newDailyLimit} onChange={e => setNewDailyLimit(parseInt(e.target.value))} style={{ width: "100%", accentColor: "#6366f1" }} />
+              </div>
+              <div>
+                <label style={{ fontSize: 11, color: "#888", display: "block", marginBottom: 6 }}>Allowed Actions</label>
+                <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                  {["transfer", "recover", "scan_airdrops", "scam_check"].map(act => (
+                    <button key={act} onClick={() => setNewAllowedActions(prev => prev.includes(act) ? prev.filter(a => a !== act) : [...prev, act])} style={{
+                      padding: "5px 12px", borderRadius: "6px", border: "1px solid", cursor: "pointer", fontSize: 12,
+                      borderColor: newAllowedActions.includes(act) ? "rgba(16,185,129,0.4)" : "rgba(255,255,255,0.1)",
+                      background: newAllowedActions.includes(act) ? "rgba(16,185,129,0.12)" : "rgba(255,255,255,0.03)",
+                      color: newAllowedActions.includes(act) ? "#10b981" : "#666",
+                    }}>{act}</button>
+                  ))}
+                </div>
+              </div>
             </div>
+            <div style={{ display: "flex", gap: "10px", justifyContent: "flex-end", marginTop: 18 }}>
+              <button onClick={() => setShowModal(false)} style={{ padding: "8px 18px", borderRadius: "8px", border: "1px solid rgba(255,255,255,0.1)", background: "transparent", color: "#888", cursor: "pointer", fontSize: 13 }}>Cancel</button>
+              <button onClick={createAgent} disabled={loading || !newAgentId.trim()} style={{ padding: "8px 20px", borderRadius: "8px", border: "none", background: "linear-gradient(135deg, #6366f1, #8b5cf6)", color: "#fff", cursor: "pointer", fontWeight: 600, fontSize: 13, opacity: !newAgentId.trim() ? 0.5 : 1 }}>Create Agent</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Chat Panel */}
+      {chatOpen && (
+        <div style={{ position: "fixed", bottom: 0, right: 0, width: 420, height: "70vh", background: "#13132b", border: "1px solid rgba(139,92,246,0.2)", borderRadius: "16px 0 0 0", display: "flex", flexDirection: "column", zIndex: 300, boxShadow: "0 -4px 40px rgba(0,0,0,0.5)" }}>
+          {/* Chat Header */}
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "14px 18px", borderBottom: "1px solid rgba(255,255,255,0.06)", background: "rgba(99,102,241,0.08)" }}>
+            <div>
+              <div style={{ fontWeight: 700, fontSize: 14 }}>💬 {chatAgentId}</div>
+              <div style={{ fontSize: 10, color: "#888" }}>{agents.find(a => a.id === chatAgentId)?.config?.role || "agent"} • policy guarded</div>
+            </div>
+            <button onClick={() => setChatOpen(false)} style={{ background: "none", border: "none", color: "#888", cursor: "pointer", fontSize: 18, padding: 4 }}>✕</button>
+          </div>
+          {/* Chat Messages */}
+          <div style={{ flex: 1, overflow: "auto", padding: "12px 14px", display: "flex", flexDirection: "column", gap: 10 }}>
+            {chatMessages.length === 0 && (
+              <div style={{ textAlign: "center", color: "#555", fontSize: 12, padding: 20 }}>
+                Start a conversation. Try:<br />
+                <span style={{ color: "#818cf8" }}>"What can you do?"</span><br />
+                <span style={{ color: "#818cf8" }}>"Send 0.1 SOL to ..."</span><br />
+                <span style={{ color: "#818cf8" }}>"Switch to low risk mode"</span><br />
+                <span style={{ color: "#818cf8" }}>"Reload your skills"</span>
+              </div>
+            )}
+            {chatMessages.map((m, i) => (
+              <div key={i} style={{ alignSelf: m.role === "user" ? "flex-end" : "flex-start", maxWidth: "85%" }}>
+                <div style={{
+                  padding: "10px 14px", borderRadius: m.role === "user" ? "14px 14px 4px 14px" : "14px 14px 14px 4px",
+                  background: m.role === "user" ? "rgba(99,102,241,0.2)" : "rgba(255,255,255,0.05)",
+                  border: `1px solid ${m.role === "user" ? "rgba(99,102,241,0.3)" : "rgba(255,255,255,0.06)"}`,
+                  fontSize: 13, lineHeight: 1.5, whiteSpace: "pre-wrap", color: "#ddd",
+                }}>{m.content}</div>
+                <div style={{ fontSize: 9, color: "#555", marginTop: 2, textAlign: m.role === "user" ? "right" : "left" }}>
+                  {new Date(m.timestamp).toLocaleTimeString()}
+                </div>
+              </div>
+            ))}
+            {chatLoading && (
+              <div style={{ alignSelf: "flex-start", padding: "10px 14px", borderRadius: "14px", background: "rgba(255,255,255,0.05)", fontSize: 13, color: "#888" }}>
+                Thinking...
+              </div>
+            )}
+            <div ref={chatEndRef} />
+          </div>
+          {/* Chat Input */}
+          <div style={{ padding: "12px 14px", borderTop: "1px solid rgba(255,255,255,0.06)", display: "flex", gap: 8 }}>
+            <input
+              value={chatInput} onChange={e => setChatInput(e.target.value)}
+              onKeyDown={e => e.key === "Enter" && !e.shiftKey && sendChat()}
+              placeholder="Type a message..."
+              style={{ flex: 1, padding: "10px 14px", borderRadius: "10px", border: "1px solid rgba(139,92,246,0.2)", background: "rgba(255,255,255,0.04)", color: "#e0e0e0", fontSize: 13, outline: "none" }}
+              disabled={chatLoading}
+            />
+            <button onClick={sendChat} disabled={chatLoading || !chatInput.trim()} style={{ padding: "10px 16px", borderRadius: "10px", border: "none", background: "linear-gradient(135deg, #6366f1, #8b5cf6)", color: "#fff", cursor: "pointer", fontWeight: 600, fontSize: 13, opacity: !chatInput.trim() ? 0.5 : 1 }}>Send</button>
           </div>
         </div>
       )}
@@ -861,6 +1195,55 @@ export default function Dashboard() {
                 </div>
                 <button onClick={executeWithParams} disabled={actionLoading} style={{ padding: "12px", borderRadius: "8px", border: "none", background: "linear-gradient(135deg, #f59e0b, #ef4444)", color: "#fff", cursor: "pointer", fontWeight: 600, fontSize: 14 }}>
                   {actionLoading ? "Scanning & Recovering..." : "Auto Scan & Recover SOL"}
+                </button>
+              </div>
+            )}
+
+            {actionModal.type === "swap" && (
+              <div style={{ display: "flex", flexDirection: "column", gap: "12px", marginBottom: 16 }}>
+                <div style={{ fontSize: 13, color: "#aaa", lineHeight: 1.6 }}>
+                  Swap tokens via SPL Token Swap (devnet AMM). A pool must exist for the token pair.
+                </div>
+                <div>
+                  <label style={{ fontSize: 11, color: "#888", display: "block", marginBottom: 4 }}>Input Token (sell)</label>
+                  <input value={actionParams.inputMint || ""} onChange={e => setActionParams({ ...actionParams, inputMint: e.target.value })} placeholder="Token mint address or SOL" style={inputStyle} />
+                  <div style={{ display: "flex", gap: 4, marginTop: 4 }}>
+                    <button type="button" onClick={() => setActionParams({ ...actionParams, inputMint: "So11111111111111111111111111111111111111112" })} style={{ padding: "2px 8px", borderRadius: 4, border: "1px solid rgba(59,130,246,0.2)", background: "rgba(59,130,246,0.08)", color: "#60a5fa", cursor: "pointer", fontSize: 10 }}>SOL</button>
+                  </div>
+                </div>
+                <div>
+                  <label style={{ fontSize: 11, color: "#888", display: "block", marginBottom: 4 }}>Output Token (buy)</label>
+                  <input value={actionParams.outputMint || ""} onChange={e => setActionParams({ ...actionParams, outputMint: e.target.value })} placeholder="Token mint address" style={inputStyle} />
+                </div>
+                <div>
+                  <label style={{ fontSize: 11, color: "#888", display: "block", marginBottom: 4 }}>Amount (raw token units)</label>
+                  <input value={actionParams.amount || ""} onChange={e => setActionParams({ ...actionParams, amount: e.target.value })} placeholder="e.g. 1000000" type="number" step="any" style={inputStyle} />
+                </div>
+                <button onClick={executeWithParams} disabled={actionLoading} style={{ padding: "10px", borderRadius: "8px", border: "none", background: "linear-gradient(135deg, #06b6d4, #0891b2)", color: "#fff", cursor: "pointer", fontWeight: 600, fontSize: 14 }}>
+                  {actionLoading ? "Swapping..." : "Execute Swap"}
+                </button>
+              </div>
+            )}
+
+            {actionModal.type === "liquidity" && (
+              <div style={{ display: "flex", flexDirection: "column", gap: "12px", marginBottom: 16 }}>
+                <div style={{ fontSize: 13, color: "#aaa", lineHeight: 1.6 }}>
+                  Add liquidity to a Raydium CLMM pool on devnet. Enter the pool ID and token amounts.
+                </div>
+                <div>
+                  <label style={{ fontSize: 11, color: "#888", display: "block", marginBottom: 4 }}>Raydium Pool ID</label>
+                  <input value={actionParams.poolId || ""} onChange={e => setActionParams({ ...actionParams, poolId: e.target.value })} placeholder="Raydium CLMM pool address" style={inputStyle} />
+                </div>
+                <div>
+                  <label style={{ fontSize: 11, color: "#888", display: "block", marginBottom: 4 }}>Amount A (raw units)</label>
+                  <input value={actionParams.amountA || ""} onChange={e => setActionParams({ ...actionParams, amountA: e.target.value })} placeholder="e.g. 1000000" type="number" step="any" style={inputStyle} />
+                </div>
+                <div>
+                  <label style={{ fontSize: 11, color: "#888", display: "block", marginBottom: 4 }}>Amount B (raw units)</label>
+                  <input value={actionParams.amountB || ""} onChange={e => setActionParams({ ...actionParams, amountB: e.target.value })} placeholder="e.g. 1000000" type="number" step="any" style={inputStyle} />
+                </div>
+                <button onClick={executeWithParams} disabled={actionLoading} style={{ padding: "10px", borderRadius: "8px", border: "none", background: "linear-gradient(135deg, #8b5cf6, #7c3aed)", color: "#fff", cursor: "pointer", fontWeight: 600, fontSize: 14 }}>
+                  {actionLoading ? "Adding Liquidity..." : "Add Liquidity"}
                 </button>
               </div>
             )}

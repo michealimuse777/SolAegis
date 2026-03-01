@@ -1,6 +1,7 @@
 import { Connection, LAMPORTS_PER_SOL } from "@solana/web3.js";
 import { WalletService } from "../services/walletService.js";
 import { DeFiSkill, DeFiAction, TaskParams, ExecutionResult } from "../skills/defiSkill.js";
+import { AgentConfig, loadAgentConfig, loadSkills } from "./agentConfig.js";
 
 export interface AgentState {
     id: string;
@@ -10,6 +11,7 @@ export interface AgentState {
     lastAction?: string;
     lastResult?: ExecutionResult;
     skills: string[];
+    config: AgentConfig | null;
 }
 
 export interface AgentTask {
@@ -18,8 +20,8 @@ export interface AgentTask {
 }
 
 /**
- * Autonomous agent with its own encrypted wallet and DeFi capabilities.
- * Can read SKILLS.md to understand its own capabilities.
+ * Autonomous agent with its own encrypted wallet, config, and DeFi capabilities.
+ * Each agent is isolated — it can only access its own wallet and config.
  */
 export class Agent {
     public pendingTx = 0;
@@ -35,6 +37,7 @@ export class Agent {
 
     /**
      * Execute a DeFi task.
+     * NOTE: Caller should check PolicyEngine BEFORE calling this.
      */
     async execute(task: AgentTask): Promise<ExecutionResult> {
         this.pendingTx++;
@@ -54,11 +57,12 @@ export class Agent {
     }
 
     /**
-     * Get current agent state (for DerMercist decision engine).
+     * Get current agent state including config.
      */
     async getState(): Promise<AgentState> {
         const publicKey = this.walletService.getPublicKey(this.id);
         const balance = await this.walletService.getBalance(this.id);
+        const config = this.getConfig();
 
         return {
             id: this.id,
@@ -67,26 +71,34 @@ export class Agent {
             pendingTx: this.pendingTx,
             lastAction: this.lastAction,
             lastResult: this.lastResult,
-            skills: this.defiSkill.getAvailableActions(),
+            skills: config?.allowedActions || this.defiSkill.getAvailableActions(),
+            config,
         };
     }
 
     /**
-     * Returns the SKILLS.md documentation so the agent can read its own capabilities.
+     * Load this agent's config from disk.
      */
-    readSkills(): string {
-        return this.defiSkill.getSkillsDocumentation();
+    getConfig(): AgentConfig | null {
+        return loadAgentConfig(this.id);
     }
 
     /**
-     * Get the agent's public key.
+     * Read this agent's SKILLS.md.
+     */
+    readSkills(): string {
+        return loadSkills(this.id);
+    }
+
+    /**
+     * Get the agent's public key (own wallet only — isolation enforced).
      */
     getPublicKey(): string {
         return this.walletService.getPublicKey(this.id);
     }
 
     /**
-     * Get the agent's decrypted keypair (for position tracking and portfolio queries).
+     * Get the agent's decrypted keypair (own wallet only — isolation enforced).
      */
     getKeypair() {
         return this.walletService.getDecryptedKeypair(this.id);

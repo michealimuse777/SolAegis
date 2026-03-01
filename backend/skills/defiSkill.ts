@@ -97,8 +97,8 @@ export class DeFiSkill {
                 }
             }
             if (action === "swap") {
-                if (!params.mintA || !params.userTokenAccountA || !params.userTokenAccountB || !params.poolVaultA || !params.poolVaultB) {
-                    return { success: false, action, error: "Swap requires params: mintA, userTokenAccountA, userTokenAccountB, poolVaultA, poolVaultB, amountIn, amountOut" };
+                if (!params.inputMint || !params.outputMint || !params.amount) {
+                    return { success: false, action, error: "Swap requires params: inputMint (token to sell), outputMint (token to buy), amount (human-readable number)" };
                 }
             }
             if (action === "liquidity") {
@@ -130,7 +130,7 @@ export class DeFiSkill {
                     // Scam filter before swap
                     const safety = await checkTokenSafety(
                         this.connection,
-                        new PublicKey(params.mintA)
+                        new PublicKey(params.inputMint)
                     );
                     if (!safety.safe) {
                         return {
@@ -140,16 +140,27 @@ export class DeFiSkill {
                         };
                     }
 
-                    tx = await swapTokens({
+                    // Use Jupiter Aggregator for real swap
+                    const swapResult = await swapTokens({
+                        connection: this.connection,
                         payer: keypair,
-                        userTokenAccountA: new PublicKey(params.userTokenAccountA),
-                        userTokenAccountB: new PublicKey(params.userTokenAccountB),
-                        poolVaultA: new PublicKey(params.poolVaultA),
-                        poolVaultB: new PublicKey(params.poolVaultB),
-                        amountIn: params.amountIn,
-                        amountOut: params.amountOut,
+                        inputMint: params.inputMint,
+                        outputMint: params.outputMint,
+                        amount: parseFloat(params.amount),
+                        slippageBps: params.slippageBps ? parseInt(params.slippageBps) : 100,
                     });
-                    break;
+
+                    return {
+                        success: true,
+                        action,
+                        signature: swapResult.signature,
+                        data: {
+                            inAmount: swapResult.inAmount,
+                            outAmount: swapResult.outAmount,
+                            priceImpact: swapResult.priceImpact,
+                            route: swapResult.route,
+                        },
+                    };
                 }
 
                 case "liquidity":

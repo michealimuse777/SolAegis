@@ -1,0 +1,16 @@
+{
+  "role": "custom",
+  "maxSolPerTx": 1,
+  "dailyTxLimit": 5,
+  "allowedActions": [
+    "transfer",
+    "swap",
+    "recover",
+    "scan_airdrops"
+  ],
+  "allowedPrograms": [
+    "*"
+  ],
+  "riskProfile": "medium",
+  "createdAt": 1772314318745
+}

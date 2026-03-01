@@ -11,7 +11,9 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@raydium-io/raydium-sdk-v2": "^0.2.32-alpha",
     "@solana/spl-token": "^0.4.0",
+    "@solana/spl-token-swap": "^0.4.4",
     "@solana/web3.js": "^1.95.0",
     "bullmq": "^5.0.0",
     "chalk": "^5.3.0",

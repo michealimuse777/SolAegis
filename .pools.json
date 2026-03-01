@@ -1,0 +1,14 @@
+[
+  {
+    "poolAddress": "FwuVWpYF2yXh3pb3YDphMkhsSHYBih4dFvCzoQcJrVih",
+    "tokenSwapAddress": "FwuVWpYF2yXh3pb3YDphMkhsSHYBih4dFvCzoQcJrVih",
+    "authority": "EqzhqANz66jvMJTKcygHNEBveTh6aMmycfq6NJu8HsZD",
+    "tokenMintA": "AZEPqpuF6EiNMHx8k2USTXb1PpcSkLzszi399wrtp4so",
+    "tokenMintB": "So11111111111111111111111111111111111111112",
+    "tokenAccountA": "26E5Mm7gdfqBRXDWibgfcsMgbCo4gV7x2Pas1qRhPMqa",
+    "tokenAccountB": "Gx3GiSrGoqzRG9xCzr2YyF1uoSVLoyh1A6gG1eTFgPh",
+    "poolMint": "29SNUYAY9aHVMXwabJXuqzkgV3ShHEqWGpWoLbrydw9G",
+    "feeAccount": "7c5hCbaewRxQcW1gBrCxAPTDwMDuV2J4KSxafBTJj2d8",
+    "createdAt": 1772304591807
+  }
+]

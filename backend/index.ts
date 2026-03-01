@@ -23,6 +23,9 @@ import {
 } from "./scheduler/cronEngine.js";
 import { DecisionMemory } from "./services/decisionMemory.js";
 import { PositionTracker } from "./services/positionTracker.js";
+import { ChatHandler } from "./core/chatHandler.js";
+import { PolicyEngine } from "./services/policyEngine.js";
+import { loadAgentConfig, updateAgentConfig, AgentRole } from "./core/agentConfig.js";
 
 // ─────────── CONFIG ───────────
 const RPC_URL = process.env.SOLANA_RPC_URL || "https://api.devnet.solana.com";
@@ -48,6 +51,8 @@ const derMercist = new DerMercist(
     llmInterface,
     connection
 );
+const chatHandler = new ChatHandler(llmManager, connection);
+const policyEngine = new PolicyEngine();
 
 // ─────────── EXPRESS ───────────
 const app = express();
@@ -83,11 +88,198 @@ app.get("/api/agents", async (_req, res) => {
 
 app.post("/api/agents", (req, res) => {
     try {
-        const { id } = req.body;
+        const { id, role, maxSolPerTx, dailyTxLimit, allowedActions } = req.body;
         if (!id) return res.status(400).json({ error: "Agent ID required" });
-        const agent = agentManager.create(id);
-        broadcast("agent:created", { id, publicKey: agent.getPublicKey() });
-        res.json({ id, publicKey: agent.getPublicKey() });
+        const agent = agentManager.create(
+            id,
+            (role as AgentRole) || "custom",
+            { maxSolPerTx, dailyTxLimit, allowedActions },
+        );
+        const config = agent.getConfig();
+        broadcast("agent:created", { id, publicKey: agent.getPublicKey(), config });
+        res.json({ id, publicKey: agent.getPublicKey(), config });
+    } catch (err: any) {
+        res.status(400).json({ error: err.message });
+    }
+});
+
+// ─── Agent Chat ───
+app.post("/api/agents/:id/chat", async (req, res) => {
+    try {
+        const agent = agentManager.get(req.params.id);
+        if (!agent) return res.status(404).json({ error: "Agent not found" });
+
+        const { message } = req.body;
+        if (!message) return res.status(400).json({ error: "Message required" });
+
+        const response = await chatHandler.handleMessage(req.params.id, message);
+
+        // Execute all approved intents sequentially
+        const allIntents = response.intents || (response.intent ? [response.intent] : []);
+        const executedReplies: string[] = [];
+
+        for (const intent of allIntents) {
+            if (
+                intent.type === "execute_action" &&
+                intent.action
+            ) {
+                const action = intent.action;
+                const params = intent.params || {};
+
+                // Policy check for this specific intent
+                const check = await policyEngine.check(req.params.id, action, params);
+                if (!check.allowed) {
+                    executedReplies.push(`⛔ **${action}** denied: ${check.reason}`);
+                    continue;
+                }
+
+                try {
+                    // Handle airdrop
+                    if (action === "airdrop") {
+                        const sig = await connection.requestAirdrop(
+                            agent.getKeypair().publicKey,
+                            1e9,
+                        );
+                        await connection.confirmTransaction(sig, "confirmed");
+                        const balance = await connection.getBalance(agent.getKeypair().publicKey) / 1e9;
+                        executedReplies.push(`✅ Airdropped 1 SOL. New balance: ${balance.toFixed(4)} SOL`);
+                        response.executionResult = { success: true, action: "airdrop", signature: sig };
+                    }
+                    // Handle transfer-sol
+                    else if (action === "transfer" && params.to && params.amount) {
+                        const keypair = agent.getKeypair();
+                        const { Transaction, SystemProgram, LAMPORTS_PER_SOL } = await import("@solana/web3.js");
+                        const lamports = Math.round(parseFloat(params.amount) * LAMPORTS_PER_SOL);
+                        const tx = new Transaction().add(
+                            SystemProgram.transfer({
+                                fromPubkey: keypair.publicKey,
+                                toPubkey: new PublicKey(params.to),
+                                lamports,
+                            }),
+                        );
+                        const sig = await connection.sendTransaction(tx, [keypair]);
+                        await connection.confirmTransaction(sig, "confirmed");
+                        executedReplies.push(`✅ Transferred ${params.amount} SOL to \`${params.to}\`. Tx: ${sig}`);
+                        response.executionResult = { success: true, action: "transfer", signature: sig };
+                    }
+                    // Handle recover — AUTO-SCAN (no tokenAccount needed)
+                    else if (action === "recover") {
+                        const keypair = agent.getKeypair();
+                        const { findAllRecoverable } = await import("./skills/solRecovery.js");
+                        const { createCloseAccountInstruction } = await import("@solana/spl-token");
+                        const { Transaction: Tx, LAMPORTS_PER_SOL: LSOL } = await import("@solana/web3.js");
+                        const recoverable = await findAllRecoverable(connection, keypair.publicKey);
+
+                        if (recoverable.length === 0) {
+                            executedReplies.push("ℹ️ No empty token accounts found. Nothing to recover.");
+                        } else {
+                            const batch = recoverable.slice(0, 10);
+                            const tx = new Tx();
+                            for (const acc of batch) {
+                                tx.add(createCloseAccountInstruction(
+                                    acc.address,
+                                    keypair.publicKey,
+                                    keypair.publicKey,
+                                ));
+                            }
+                            const sig = await connection.sendTransaction(tx, [keypair]);
+                            await connection.confirmTransaction(sig, "confirmed");
+                            const estimatedSOL = batch.reduce((s: number, a: any) => s + a.rentLamports / 1e9, 0);
+                            executedReplies.push(`✅ Recovered ${batch.length} empty account(s), reclaiming ~${estimatedSOL.toFixed(4)} SOL. Tx: ${sig}`);
+                            response.executionResult = { success: true, action: "recover", signature: sig, recovered: batch.length };
+                        }
+                    }
+                    // Handle scan_airdrops
+                    else if (action === "scan_airdrops") {
+                        const result = await agent.execute({ action: "scan_airdrops" as any, params: {} });
+                        if (result.success) {
+                            const airdrops = result.data || [];
+                            if (airdrops.length === 0) {
+                                executedReplies.push("📊 Scan complete. No airdrop-eligible tokens found in your wallet.");
+                            } else {
+                                const summary = airdrops.map((a: any) => `• ${a.mint || a.name || "token"}: ${a.amount || a.balance || "?"}`).join("\n");
+                                executedReplies.push(`📊 Scan complete. Found **${airdrops.length}** token(s):\n${summary}`);
+                            }
+                        } else {
+                            executedReplies.push(`❌ Scan failed: ${result.error}`);
+                        }
+                        response.executionResult = result;
+                    }
+                    // Handle scam_check — token safety analysis
+                    else if (action === "scam_check") {
+                        const { checkTokenSafety } = await import("./skills/scamFilter.js");
+                        const { TOKEN_PROGRAM_ID } = await import("@solana/spl-token");
+                        const keypair = agent.getKeypair();
+
+                        if (params.mint) {
+                            // Check specific mint
+                            const result = await checkTokenSafety(connection, new PublicKey(params.mint));
+                            const status = result.safe ? "✅ SAFE" : "⚠️ RISKY";
+                            executedReplies.push(`🔍 **Scam Check**: ${params.mint}\n\n${status} — Risk Score: **${result.riskScore}/100**\n\nFlags:\n${result.reasons.map((r: string) => `• ${r}`).join("\n")}\n\nDetails: freeze=${result.details.hasFreezeAuthority}, mint=${result.details.hasMintAuthority}, metadata=${result.details.hasMetadata}`);
+                            response.executionResult = { success: true, action: "scam_check", result };
+                        } else {
+                            // Auto-scan all token accounts
+                            const tokenAccounts = await connection.getParsedTokenAccountsByOwner(
+                                keypair.publicKey,
+                                { programId: TOKEN_PROGRAM_ID },
+                            );
+
+                            if (tokenAccounts.value.length === 0) {
+                                executedReplies.push("🔍 No token accounts found in wallet. Nothing to scan for scams.");
+                            } else {
+                                const results: string[] = [];
+                                for (const ta of tokenAccounts.value.slice(0, 5)) {
+                                    const mint = ta.account.data.parsed?.info?.mint;
+                                    if (!mint) continue;
+                                    try {
+                                        const check = await checkTokenSafety(connection, new PublicKey(mint));
+                                        const icon = check.safe ? "✅" : "⚠️";
+                                        results.push(`${icon} **${mint.slice(0, 8)}...** — Risk: ${check.riskScore}/100 ${check.reasons.length > 0 ? `(${check.reasons[0]})` : ""}`);
+                                    } catch {
+                                        results.push(`❓ **${mint.slice(0, 8)}...** — Could not analyze`);
+                                    }
+                                }
+                                executedReplies.push(`🔍 **Scam Scan** — ${tokenAccounts.value.length} token(s) found:\n\n${results.join("\n")}`);
+                                response.executionResult = { success: true, action: "scam_check", scanned: results.length };
+                            }
+                        }
+                    }
+                    // Unknown action
+                    else {
+                        executedReplies.push(`⚠️ Action "${action}" recognized but execution not implemented yet.`);
+                    }
+
+                    broadcast("chat:action", { agentId: req.params.id, action, result: response.executionResult });
+                } catch (err: any) {
+                    executedReplies.push(`❌ **${action}** failed: ${err.message}`);
+                }
+            }
+        }
+
+        // If we executed actions, use those results as the reply
+        if (executedReplies.length > 0) {
+            response.reply = executedReplies.join("\n\n");
+        }
+
+        broadcast("chat:message", { agentId: req.params.id, message, reply: response.reply });
+        res.json(response);
+    } catch (err: any) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// ─── Agent Config ───
+app.get("/api/agents/:id/config", (req, res) => {
+    const config = loadAgentConfig(req.params.id);
+    if (!config) return res.status(404).json({ error: "Config not found" });
+    res.json(config);
+});
+
+app.patch("/api/agents/:id/config", (req, res) => {
+    try {
+        const updated = updateAgentConfig(req.params.id, req.body);
+        broadcast("config:updated", { agentId: req.params.id, config: updated });
+        res.json(updated);
     } catch (err: any) {
         res.status(400).json({ error: err.message });
     }
@@ -243,6 +435,152 @@ app.post("/api/agents/:id/auto-recover", async (req, res) => {
         const estimatedSOL = batch.reduce((s, a) => s + a.rentLamports, 0) / LAMPORTS_PER_SOL;
         broadcast("task:executed", { agentId: req.params.id, result: { success: true, action: "auto-recover", signature: sig, recovered: batch.length } });
         res.json({ success: true, signature: sig, recovered: batch.length, solRecovered: estimatedSOL });
+    } catch (err: any) {
+        res.status(500).json({ success: false, error: err.message });
+    }
+});
+
+// ─── Swap via SPL Token Swap ───
+app.post("/api/agents/:id/swap", async (req, res) => {
+    try {
+        const agent = agentManager.get(req.params.id);
+        if (!agent) return res.status(404).json({ error: "Agent not found" });
+
+        const { inputMint, outputMint, amount } = req.body;
+        if (!inputMint || !outputMint || !amount) {
+            return res.status(400).json({ error: "inputMint, outputMint, and amount required" });
+        }
+
+        const keypair = agent.getKeypair();
+        const startTime = Date.now();
+        const { swapTokens } = await import("./skills/swap.js");
+        const result = await swapTokens({
+            connection,
+            payer: keypair,
+            inputMint,
+            outputMint,
+            amount: parseFloat(amount),
+        });
+
+        // Record in decision memory
+        const dm = new DecisionMemory();
+        dm.record({
+            timestamp: Date.now(),
+            agentId: req.params.id,
+            action: "swap",
+            source: "rules",
+            params: { inputMint, outputMint, amount },
+            result: "success",
+            reason: `Swapped via ${result.route}`,
+            riskScore: 40,
+            confidence: 85,
+            balanceAtTime: await connection.getBalance(keypair.publicKey) / 1e9,
+            executionTimeMs: Date.now() - startTime,
+            txSignature: result.signature,
+        });
+
+        // Record in position tracker
+        const pt = new PositionTracker(connection);
+        pt.recordTrade(req.params.id, {
+            timestamp: Date.now(),
+            action: "sell",
+            mint: result.inputMint,
+            amount: parseFloat(amount),
+            solValue: parseFloat(amount),
+            txSignature: result.signature,
+        });
+
+        broadcast("task:executed", {
+            agentId: req.params.id,
+            result: { success: true, action: "swap", ...result },
+        });
+        res.json({ success: true, ...result });
+    } catch (err: any) {
+        res.status(500).json({ success: false, error: err.message });
+    }
+});
+
+// ─── Pool Management ───
+app.post("/api/pools/create", async (req, res) => {
+    try {
+        const { agentId, tokenMintA, tokenMintB, initialAmountA, initialAmountB } = req.body;
+        if (!agentId || !tokenMintA || !tokenMintB || !initialAmountA || !initialAmountB) {
+            return res.status(400).json({ error: "agentId, tokenMintA, tokenMintB, initialAmountA, initialAmountB required" });
+        }
+        const agent = agentManager.get(agentId);
+        if (!agent) return res.status(404).json({ error: "Agent not found" });
+
+        const keypair = agent.getKeypair();
+        const { createPool } = await import("./skills/swap.js");
+        const pool = await createPool(
+            connection, keypair,
+            tokenMintA, tokenMintB,
+            parseInt(initialAmountA), parseInt(initialAmountB),
+        );
+
+        broadcast("task:executed", { agentId, result: { success: true, action: "create-pool", pool } });
+        res.json({ success: true, pool });
+    } catch (err: any) {
+        console.error("[PoolCreate] Error:", err);
+        res.status(500).json({ success: false, error: err.message || String(err) });
+    }
+});
+
+app.get("/api/pools", async (_req, res) => {
+    try {
+        const { listPools } = await import("./skills/swap.js");
+        res.json({ success: true, pools: listPools() });
+    } catch (err: any) {
+        res.status(500).json({ success: false, error: err.message });
+    }
+});
+
+// ─── Raydium CLMM Liquidity ───
+app.post("/api/agents/:id/liquidity/add", async (req, res) => {
+    try {
+        const agent = agentManager.get(req.params.id);
+        if (!agent) return res.status(404).json({ error: "Agent not found" });
+
+        const { poolId, amountA, amountB, priceLower, priceUpper } = req.body;
+        if (!poolId || !amountA || !amountB) {
+            return res.status(400).json({ error: "poolId, amountA, amountB required (priceLower/priceUpper optional)" });
+        }
+
+        const keypair = agent.getKeypair();
+        const { addLiquidity } = await import("./skills/raydiumLiquidity.js");
+        const result = await addLiquidity(
+            connection, keypair, poolId,
+            parseInt(amountA), parseInt(amountB),
+            priceLower ? parseFloat(priceLower) : 0.001,
+            priceUpper ? parseFloat(priceUpper) : 1000,
+        );
+
+        broadcast("task:executed", { agentId: req.params.id, result: { ...result, action: "add-liquidity" } });
+        res.json(result);
+    } catch (err: any) {
+        res.status(500).json({ success: false, error: err.message });
+    }
+});
+
+app.post("/api/agents/:id/liquidity/remove", async (req, res) => {
+    try {
+        const agent = agentManager.get(req.params.id);
+        if (!agent) return res.status(404).json({ error: "Agent not found" });
+
+        const { poolId, positionNftMint, percentage } = req.body;
+        if (!poolId || !positionNftMint) {
+            return res.status(400).json({ error: "poolId and positionNftMint required" });
+        }
+
+        const keypair = agent.getKeypair();
+        const { removeLiquidity } = await import("./skills/raydiumLiquidity.js");
+        const result = await removeLiquidity(
+            connection, keypair, poolId, positionNftMint,
+            percentage ? parseFloat(percentage) : 100,
+        );
+
+        broadcast("task:executed", { agentId: req.params.id, result: { ...result, action: "remove-liquidity" } });
+        res.json(result);
     } catch (err: any) {
         res.status(500).json({ success: false, error: err.message });
     }

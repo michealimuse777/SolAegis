@@ -22,6 +22,15 @@ export class LLMManager {
     ) { }
 
     /**
+     * Simple text completion — returns just the output string.
+     * Used by ChatHandler for intent parsing and conversation.
+     */
+    async complete(prompt: string, _maxTokens?: number): Promise<string> {
+        const resp = await this.query(prompt);
+        return resp.output;
+    }
+
+    /**
      * Query the LLM with automatic key rotation on rate limiting.
      */
     async query(prompt: string): Promise<LLMResponse> {
