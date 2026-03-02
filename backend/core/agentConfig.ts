@@ -165,10 +165,15 @@ export function createAgentConfig(
     fs.mkdirSync(dir, { recursive: true });
 
     const template = ROLE_TEMPLATES[role];
+    // Filter out undefined overrides so template defaults aren't clobbered
+    const cleanOverrides: Partial<AgentConfig> = {};
+    for (const [key, value] of Object.entries(overrides)) {
+        if (value !== undefined) (cleanOverrides as any)[key] = value;
+    }
     const config: AgentConfig = {
         ...template,
-        ...overrides,
-        role: overrides.role || role,
+        ...cleanOverrides,
+        role: cleanOverrides.role || role,
         createdAt: Date.now(),
     };
 

@@ -89,6 +89,105 @@ interface RecoverySummary {
 }
 
 export default function Dashboard() {
+  // Auth state
+  const [token, setToken] = useState<string | null>(null);
+  const [authUserId, setAuthUserId] = useState<string | null>(null);
+  const [walletAddress, setWalletAddress] = useState<string | null>(null);
+  const [authError, setAuthError] = useState("");
+  const [authLoading, setAuthLoading] = useState(false);
+
+  // Load token from localStorage on mount
+  useEffect(() => {
+    const saved = localStorage.getItem("solaegis_token");
+    const savedUser = localStorage.getItem("solaegis_user");
+    const savedWallet = localStorage.getItem("solaegis_wallet");
+    if (saved && savedUser) {
+      setToken(saved);
+      setAuthUserId(savedUser);
+      setWalletAddress(savedWallet);
+    }
+  }, []);
+
+  // Auth helper - wraps fetch with Bearer header
+  const authFetch = useCallback(async (url: string, opts: RequestInit = {}): Promise<Response> => {
+    const headers: Record<string, string> = {
+      ...(opts.headers as Record<string, string> || {}),
+    };
+    if (token) headers["Authorization"] = `Bearer ${token}`;
+    if (opts.body) headers["Content-Type"] = "application/json";
+    return fetch(url, { ...opts, headers });
+  }, [token]);
+
+  // Base58 encoder for signature
+  const toBase58 = (bytes: Uint8Array): string => {
+    const chars = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
+    let num = BigInt(0);
+    for (const byte of bytes) num = num * BigInt(256) + BigInt(byte);
+    let result = "";
+    while (num > BigInt(0)) {
+      result = chars[Number(num % BigInt(58))] + result;
+      num = num / BigInt(58);
+    }
+    for (const byte of bytes) { if (byte === 0) result = "1" + result; else break; }
+    return result;
+  };
+
+  // Wallet connect + signature auth
+  const connectWallet = async () => {
+    setAuthError("");
+    setAuthLoading(true);
+    try {
+      const provider = (window as any).solana || (window as any).phantom?.solana || (window as any).solflare;
+      if (!provider) throw new Error("No Solana wallet found. Install Phantom or Solflare.");
+
+      const resp = await provider.connect();
+      const pubkey = resp.publicKey.toString();
+
+      // Step 1: Request nonce
+      const nonceRes = await fetch(`${API}/api/auth/wallet/nonce`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ walletAddress: pubkey }),
+      });
+      const nonceData = await nonceRes.json();
+      if (!nonceRes.ok) throw new Error(nonceData.error || "Failed to get nonce");
+
+      // Step 2: Sign the message
+      const encodedMessage = new TextEncoder().encode(nonceData.message);
+      const signedMessage = await provider.signMessage(encodedMessage, "utf8");
+      const sigBytes = new Uint8Array(signedMessage.signature || signedMessage);
+      const sigBase58 = toBase58(sigBytes);
+
+      // Step 3: Verify on backend -> get JWT
+      const verifyRes = await fetch(`${API}/api/auth/wallet/verify`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ walletAddress: pubkey, signature: sigBase58, message: nonceData.message }),
+      });
+      const verifyData = await verifyRes.json();
+      if (!verifyRes.ok) throw new Error(verifyData.error || "Signature verification failed");
+
+      setToken(verifyData.token);
+      setAuthUserId(verifyData.userId);
+      setWalletAddress(pubkey);
+      localStorage.setItem("solaegis_token", verifyData.token);
+      localStorage.setItem("solaegis_user", verifyData.userId);
+      localStorage.setItem("solaegis_wallet", pubkey);
+    } catch (err: any) {
+      setAuthError(err.message);
+    }
+    setAuthLoading(false);
+  };
+
+  const logout = () => {
+    setToken(null);
+    setAuthUserId(null);
+    setWalletAddress(null);
+    localStorage.removeItem("solaegis_token");
+    localStorage.removeItem("solaegis_user");
+    localStorage.removeItem("solaegis_wallet");
+    try { ((window as any).solana || (window as any).phantom?.solana)?.disconnect(); } catch { }
+  };
   const [agents, setAgents] = useState<Agent[]>([]);
   const [events, setEvents] = useState<WSEvent[]>([]);
   const [tab, setTab] = useState<TabType>("dashboard");
@@ -142,14 +241,14 @@ export default function Dashboard() {
   // Fetch agents
   const fetchAgents = useCallback(async () => {
     try {
-      const res = await fetch(`${API}/api/agents`);
+      const res = await authFetch(`${API}/api/agents`);
       const data = await res.json();
       setAgents(Array.isArray(data) ? data : data.value || []);
       if (!selectedAgent && data.length > 0) {
         setSelectedAgent((Array.isArray(data) ? data : data.value)?.[0]?.id);
       }
     } catch { }
-  }, [selectedAgent]);
+  }, [selectedAgent, authFetch]);
 
   // WebSocket
   useEffect(() => {
@@ -178,9 +277,8 @@ export default function Dashboard() {
     if (!newAgentId.trim()) return;
     setLoading(true);
     try {
-      await fetch(`${API}/api/agents`, {
+      await authFetch(`${API}/api/agents`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           id: newAgentId,
           role: newRole,
@@ -204,9 +302,8 @@ export default function Dashboard() {
     setChatInput("");
     setChatLoading(true);
     try {
-      const res = await fetch(`${API}/api/agents/${chatAgentId}/chat`, {
+      const res = await authFetch(`${API}/api/agents/${chatAgentId}/chat`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ message: userMsg.content }),
       });
       const data = await res.json();
@@ -292,9 +389,8 @@ export default function Dashboard() {
         body = {};
       }
 
-      const res = await fetch(url, {
+      const res = await authFetch(url, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
       });
       const data = await res.json();
@@ -312,9 +408,8 @@ export default function Dashboard() {
     setActionModal({ open: true, agentId, type: "airdrop" });
     setActionResult(null);
     try {
-      const res = await fetch(`${API}/api/agents/${agentId}/airdrop`, {
+      const res = await authFetch(`${API}/api/agents/${agentId}/airdrop`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ amount: 1 }),
       });
       const data = await res.json();
@@ -338,9 +433,9 @@ export default function Dashboard() {
   const fetchPortfolio = async (agentId: string) => {
     try {
       const [pRes, aRes, dRes] = await Promise.all([
-        fetch(`${API}/api/agents/${agentId}/portfolio`),
-        fetch(`${API}/api/agents/${agentId}/analytics`),
-        fetch(`${API}/api/agents/${agentId}/decisions`),
+        authFetch(`${API}/api/agents/${agentId}/portfolio`),
+        authFetch(`${API}/api/agents/${agentId}/analytics`),
+        authFetch(`${API}/api/agents/${agentId}/decisions`),
       ]);
       setPortfolio(await pRes.json());
       setAnalytics(await aRes.json());
@@ -351,7 +446,7 @@ export default function Dashboard() {
   // Fetch recovery
   const fetchRecovery = async (agentId: string) => {
     try {
-      const res = await fetch(`${API}/api/agents/${agentId}/recovery`);
+      const res = await authFetch(`${API}/api/agents/${agentId}/recovery`);
       setRecovery(await res.json());
     } catch { }
   };
@@ -359,7 +454,7 @@ export default function Dashboard() {
   // Fetch cron jobs
   const fetchCronJobs = async () => {
     try {
-      const res = await fetch(`${API}/api/cron/jobs`);
+      const res = await authFetch(`${API}/api/cron/jobs`);
       const data = await res.json();
       setCronJobs(Array.isArray(data) ? data : data.value || []);
     } catch { }
@@ -371,9 +466,8 @@ export default function Dashboard() {
     setCronLoading(true);
     setCronResult(null);
     try {
-      const res = await fetch(`${API}/api/cron/schedule`, {
+      const res = await authFetch(`${API}/api/cron/schedule`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
         body: JSON.stringify(cronForm),
       });
       const data = await res.json();
@@ -388,9 +482,8 @@ export default function Dashboard() {
   // Remove cron job
   const removeCronJob = async (name: string, pattern: string) => {
     try {
-      await fetch(`${API}/api/cron/jobs/${encodeURIComponent(name)}`, {
+      await authFetch(`${API}/api/cron/jobs/${encodeURIComponent(name)}`, {
         method: "DELETE",
-        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ pattern }),
       });
       fetchCronJobs();
@@ -402,9 +495,8 @@ export default function Dashboard() {
     if (!scamMint.trim()) return;
     setScamLoading(true);
     try {
-      const res = await fetch(`${API}/api/tokens/check`, {
+      const res = await authFetch(`${API}/api/tokens/check`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ mint: scamMint }),
       });
       setScamResult(await res.json());
@@ -422,6 +514,46 @@ export default function Dashboard() {
   }, [tab, selectedAgent]);
 
   const activeAgent = agents.find(a => a.id === selectedAgent);
+
+  // ─── Wallet Connect Screen ───
+  if (!token) {
+    return (
+      <div style={{ minHeight: "100vh", background: "linear-gradient(135deg, #0a0a1a 0%, #1a1035 50%, #0d0d2b 100%)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+        <div style={{ background: "rgba(20,15,40,0.95)", borderRadius: 16, padding: 40, width: 420, border: "1px solid rgba(139,92,246,0.3)", boxShadow: "0 0 60px rgba(139,92,246,0.15)" }}>
+          <div style={{ textAlign: "center", marginBottom: 32 }}>
+            <div style={{ width: 56, height: 56, borderRadius: 14, background: "linear-gradient(135deg, #3b82f6, #8b5cf6)", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, fontSize: 24, color: "#fff", margin: "0 auto 16px" }}>S</div>
+            <div style={{ fontSize: 32, fontWeight: 800, background: "linear-gradient(135deg, #a78bfa, #818cf8)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>SolAegis</div>
+            <div style={{ color: "#9ca3af", fontSize: 14, marginTop: 4 }}>Autonomous DeFi Infrastructure</div>
+          </div>
+
+          <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+            <button onClick={connectWallet} disabled={authLoading} style={{ padding: "14px 0", borderRadius: 10, border: "1px solid rgba(139,92,246,0.4)", cursor: "pointer", fontSize: 15, fontWeight: 700, background: "linear-gradient(135deg, #7c3aed, #6366f1)", color: "#fff", opacity: authLoading ? 0.6 : 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 10, transition: "all 0.2s" }}>
+              <span style={{ fontSize: 20 }}>🔐</span>
+              {authLoading ? "Signing..." : "Connect Wallet"}
+            </button>
+
+            <div style={{ textAlign: "center", color: "#6b7280", fontSize: 12, lineHeight: 1.5 }}>
+              Sign a message with your Solana wallet to authenticate.<br />
+              Supports Phantom, Solflare, and other Solana wallets.
+            </div>
+
+            {authError && (
+              <div style={{ color: "#f87171", fontSize: 13, padding: "10px 14px", background: "rgba(248,113,113,0.1)", borderRadius: 8, textAlign: "center" }}>
+                {authError}
+              </div>
+            )}
+          </div>
+
+          <div style={{ marginTop: 24, padding: "12px 16px", borderRadius: 8, background: "rgba(59,130,246,0.08)", border: "1px solid rgba(59,130,246,0.15)" }}>
+            <div style={{ fontSize: 11, color: "#60a5fa", fontWeight: 600, marginBottom: 4 }}>🛡️ Wallet Signature Auth</div>
+            <div style={{ fontSize: 11, color: "#6b7280", lineHeight: 1.5 }}>
+              No passwords stored. Your wallet signs a one-time nonce, verified cryptographically. Session expires in 24 hours.
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div style={{ minHeight: "100vh", background: "linear-gradient(135deg, #0a0a1a 0%, #0d1117 50%, #0a0a2e 100%)", color: "#e0e0e0", fontFamily: "'Inter', -apple-system, sans-serif" }}>
@@ -442,6 +574,10 @@ export default function Dashboard() {
           <button onClick={() => setShowModal(true)} style={{ padding: "8px 18px", borderRadius: "8px", border: "none", background: "linear-gradient(135deg, #3b82f6, #8b5cf6)", color: "#fff", cursor: "pointer", fontSize: 13, fontWeight: 600 }}>
             + New Agent
           </button>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 14px", borderRadius: 8, background: "rgba(139,92,246,0.1)", border: "1px solid rgba(139,92,246,0.2)" }}>
+            <span style={{ fontSize: 12, color: "#a78bfa", fontFamily: "monospace" }}>{walletAddress ? `${walletAddress.slice(0, 4)}...${walletAddress.slice(-4)}` : authUserId}</span>
+            <button onClick={logout} style={{ padding: "4px 10px", borderRadius: 6, border: "none", background: "rgba(239,68,68,0.15)", color: "#f87171", cursor: "pointer", fontSize: 11, fontWeight: 600 }}>Disconnect</button>
+          </div>
         </div>
       </header>
 

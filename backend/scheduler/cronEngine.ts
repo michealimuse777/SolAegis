@@ -78,6 +78,33 @@ export async function scheduleCronJob(
 }
 
 /**
+ * Schedule a ONE-SHOT delayed job for an agent.
+ * e.g. "transfer 0.1 SOL in 6 hours" → delay = 6 * 60 * 60 * 1000
+ */
+export async function scheduleDelayedJob(
+    jobName: string,
+    data: CronJobData,
+    delayMs: number,
+): Promise<string | null> {
+    if (!agentQueue) {
+        console.warn("[CronEngine] Scheduler not initialized — skipping job");
+        return null;
+    }
+
+    const job = await agentQueue.add(jobName, data, {
+        delay: delayMs,
+        removeOnComplete: { count: 100 },
+        removeOnFail: { count: 50 },
+    });
+
+    const delayMins = Math.round(delayMs / 60000);
+    console.log(
+        "[CronEngine] Delayed job " + jobName + " for agent " + data.agentId + " (in " + delayMins + " min)"
+    );
+    return job.id ?? null;
+}
+
+/**
  * Create a worker that processes scheduled jobs.
  */
 export function createWorker(

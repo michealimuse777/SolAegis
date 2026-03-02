@@ -1,7 +1,7 @@
 {
   "role": "custom",
-  "maxSolPerTx": 1,
-  "dailyTxLimit": 5,
+  "maxSolPerTx": 0.5,
+  "dailyTxLimit": 10,
   "allowedActions": [
     "transfer",
     "recover",
@@ -11,6 +11,6 @@
   "allowedPrograms": [
     "*"
   ],
-  "riskProfile": "low",
-  "createdAt": 1772314318713
+  "riskProfile": "medium",
+  "createdAt": 1772398785685
 }

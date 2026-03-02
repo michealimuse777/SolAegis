@@ -1,0 +1,7 @@
+{"userId":"userA","agentId":"MyBot","action":"create_agent","status":"success","timestamp":1772394570443,"iso":"2026-03-01T19:49:30.443Z"}
+{"userId":"alice","agentId":"AliceBot","action":"create_agent","status":"success","timestamp":1772398785690,"iso":"2026-03-01T20:59:45.690Z"}
+{"userId":"alice","agentId":"AliceBot","action":"prompt_injection","status":"denied","reason":"instruction_override: ignore\\s+(all\\s+)?(previous|prior|above|earlier)\\s+(instructions|prompts|rules|directives)","timestamp":1772436450764,"iso":"2026-03-02T07:27:30.764Z"}
+{"userId":"alice","agentId":"AliceBot","action":"prompt_injection","status":"denied","reason":"prompt_extraction: show\\s+(me\\s+)?(your|the)\\s+(system\\s+)?prompt","timestamp":1772436566847,"iso":"2026-03-02T07:29:26.847Z"}
+{"userId":"alice","agentId":"AliceBot","action":"prompt_injection","status":"denied","reason":"role_manipulation: DAN\\s+mode","timestamp":1772436566980,"iso":"2026-03-02T07:29:26.980Z"}
+{"userId":"wallet:7yySoYz7q6Qir8oeznFCpqMrtxRSsiuvUHTEwamMetDU","agentId":"Trading Agent","action":"create_agent","status":"success","timestamp":1772447120161,"iso":"2026-03-02T10:25:20.161Z"}
+{"userId":"wallet:7yySoYz7q6Qir8oeznFCpqMrtxRSsiuvUHTEwamMetDU","agentId":"gobot","action":"create_agent","status":"success","timestamp":1772447231683,"iso":"2026-03-02T10:27:11.683Z"}

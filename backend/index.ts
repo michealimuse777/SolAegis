@@ -16,6 +16,7 @@ import { getRecoverySummary } from "./skills/solRecovery.js";
 import {
     initScheduler,
     scheduleCronJob,
+    scheduleDelayedJob,
     createWorker,
     listScheduledJobs,
     removeScheduledJob,
@@ -23,9 +24,18 @@ import {
 } from "./scheduler/cronEngine.js";
 import { DecisionMemory } from "./services/decisionMemory.js";
 import { PositionTracker } from "./services/positionTracker.js";
-import { ChatHandler } from "./core/chatHandler.js";
+import { ChatHandler, intervalToCron, delayToMs } from "./core/chatHandler.js";
 import { PolicyEngine } from "./services/policyEngine.js";
 import { loadAgentConfig, updateAgentConfig, AgentRole } from "./core/agentConfig.js";
+import { recordSuccess, recordFailure } from "./core/memory.js";
+import { authMiddleware, registerUser, loginUser, requestWalletNonce, verifyWalletSignature, assignAgentToUser, getUserAgents, agentOwnershipMiddleware, AuthenticatedRequest } from "./security/auth.js";
+import { chatRateLimiter, txRateLimiter } from "./security/rateLimiter.js";
+import { validateAgentCreate } from "./security/configValidator.js";
+import { auditLog, getAuditLog } from "./security/auditLog.js";
+import { securityHeaders, inputSanitizer, payloadSizeGuard } from "./security/securityMiddleware.js";
+import { checkPromptInjection, getThreatDescription } from "./security/promptInjectionGuard.js";
+import { schedulerGuardrailMiddleware, registerUserJob } from "./security/schedulerGuardrails.js";
+import { validateTransferInputs } from "./security/txSimulation.js";
 
 // ─────────── CONFIG ───────────
 const RPC_URL = process.env.SOLANA_RPC_URL || "https://api.devnet.solana.com";
@@ -56,8 +66,16 @@ const policyEngine = new PolicyEngine();
 
 // ─────────── EXPRESS ───────────
 const app = express();
+app.disable("x-powered-by");            // Hide server fingerprint
 app.use(cors());
-app.use(express.json());
+app.use(express.json({ limit: "10kb" })); // Match payload guard
+
+// Security middleware
+app.use(securityHeaders);            // XSS, clickjacking, CSP, HSTS headers
+app.use(inputSanitizer);             // Strip HTML/XSS from all request bodies
+app.use(payloadSizeGuard(10_000));   // 10KB max request body
+app.use(authMiddleware as any);      // JWT auth (strict)
+app.use("/api/agents/:id", agentOwnershipMiddleware as any);  // User A cannot control User B's agents
 
 // WebSocket clients for live updates
 const wsClients = new Set<WebSocket>();
@@ -76,26 +94,93 @@ app.get("/api/health", (_req, res) => {
     res.json({ status: "ok", rpc: RPC_URL, agents: agentManager.list().length });
 });
 
-// ─── Agents ───
-app.get("/api/agents", async (_req, res) => {
+// ─── Auth Routes ───
+app.post("/api/auth/register", (req, res) => {
+    try {
+        const { userId, password } = req.body;
+        if (!userId || !password) return res.status(400).json({ error: "userId and password required" });
+        const result = registerUser(userId, password);
+        res.json(result);
+    } catch (err: any) {
+        res.status(400).json({ error: err.message });
+    }
+});
+
+app.post("/api/auth/login", (req, res) => {
+    try {
+        const { userId, password } = req.body;
+        if (!userId || !password) return res.status(400).json({ error: "userId and password required" });
+        const result = loginUser(userId, password);
+        res.json(result);
+    } catch (err: any) {
+        res.status(401).json({ error: err.message });
+    }
+});
+
+// ─── Wallet Signature Auth ───
+app.post("/api/auth/wallet/nonce", (req, res) => {
+    try {
+        const { walletAddress } = req.body;
+        if (!walletAddress) return res.status(400).json({ error: "walletAddress required" });
+        const result = requestWalletNonce(walletAddress);
+        res.json(result);
+    } catch (err: any) {
+        res.status(400).json({ error: err.message });
+    }
+});
+
+app.post("/api/auth/wallet/verify", (req, res) => {
+    try {
+        const { walletAddress, signature, message } = req.body;
+        if (!walletAddress || !signature || !message) {
+            return res.status(400).json({ error: "walletAddress, signature, and message required" });
+        }
+        const result = verifyWalletSignature(walletAddress, signature, message);
+        res.json(result);
+    } catch (err: any) {
+        res.status(401).json({ error: err.message });
+    }
+});
+
+// ─── Agents (filtered by ownership) ───
+app.get("/api/agents", async (req: AuthenticatedRequest, res) => {
     try {
         const states = await agentManager.listStates();
+        // Only return agents owned by this user
+        if (req.userId) {
+            const ownedIds = getUserAgents(req.userId);
+            const filtered = (Array.isArray(states) ? states : []).filter(
+                (a: any) => ownedIds.includes(a.id)
+            );
+            return res.json(filtered);
+        }
         res.json(states);
     } catch (err: any) {
         res.status(500).json({ error: err.message });
     }
 });
 
-app.post("/api/agents", (req, res) => {
+app.post("/api/agents", (req: AuthenticatedRequest, res) => {
     try {
-        const { id, role, maxSolPerTx, dailyTxLimit, allowedActions } = req.body;
-        if (!id) return res.status(400).json({ error: "Agent ID required" });
+        // Validate with Zod
+        const validation = validateAgentCreate(req.body);
+        if (!validation.valid) {
+            return res.status(400).json({ error: "Invalid config", details: validation.errors });
+        }
+        const { id, role, maxSolPerTx, dailyTxLimit, allowedActions } = validation.data;
         const agent = agentManager.create(
             id,
             (role as AgentRole) || "custom",
             { maxSolPerTx, dailyTxLimit, allowedActions },
         );
         const config = agent.getConfig();
+
+        // Associate agent with user
+        if (req.userId) {
+            assignAgentToUser(req.userId, id);
+        }
+
+        auditLog({ userId: req.userId, agentId: id, action: "create_agent", status: "success" });
         broadcast("agent:created", { id, publicKey: agent.getPublicKey(), config });
         res.json({ id, publicKey: agent.getPublicKey(), config });
     } catch (err: any) {
@@ -103,14 +188,32 @@ app.post("/api/agents", (req, res) => {
     }
 });
 
-// ─── Agent Chat ───
-app.post("/api/agents/:id/chat", async (req, res) => {
+// ─── Agent Chat (rate limited) ───
+app.post("/api/agents/:id/chat", chatRateLimiter as any, async (req: AuthenticatedRequest, res) => {
     try {
         const agent = agentManager.get(req.params.id);
         if (!agent) return res.status(404).json({ error: "Agent not found" });
 
         const { message } = req.body;
         if (!message) return res.status(400).json({ error: "Message required" });
+
+        // ─── Prompt Injection Guard ───
+        const injectionCheck = checkPromptInjection(message);
+        if (!injectionCheck.safe) {
+            auditLog({
+                userId: req.userId,
+                agentId: req.params.id,
+                action: "prompt_injection",
+                status: "denied",
+                reason: `${injectionCheck.threat}: ${injectionCheck.pattern}`,
+            });
+            return res.json({
+                reply: getThreatDescription(injectionCheck.threat!),
+                intent: { type: "blocked" },
+                blocked: true,
+                threat: injectionCheck.threat,
+            });
+        }
 
         const response = await chatHandler.handleMessage(req.params.id, message);
 
@@ -129,7 +232,14 @@ app.post("/api/agents/:id/chat", async (req, res) => {
                 // Policy check for this specific intent
                 const check = await policyEngine.check(req.params.id, action, params);
                 if (!check.allowed) {
-                    executedReplies.push(`⛔ **${action}** denied: ${check.reason}`);
+                    executedReplies.push(`⛔ ${action} denied: ${check.reason}`);
+                    auditLog({
+                        userId: (req as AuthenticatedRequest).userId,
+                        agentId: req.params.id,
+                        action,
+                        status: "denied",
+                        reason: check.reason,
+                    });
                     continue;
                 }
 
@@ -250,8 +360,108 @@ app.post("/api/agents/:id/chat", async (req, res) => {
                     }
 
                     broadcast("chat:action", { agentId: req.params.id, action, result: response.executionResult });
+                    recordSuccess(req.params.id, action, executedReplies[executedReplies.length - 1]?.slice(0, 80));
+                    auditLog({
+                        userId: (req as AuthenticatedRequest).userId,
+                        agentId: req.params.id,
+                        action,
+                        status: "success",
+                        txSignature: response.executionResult?.signature,
+                    });
                 } catch (err: any) {
-                    executedReplies.push(`❌ **${action}** failed: ${err.message}`);
+                    executedReplies.push(`❌ ${action} failed: ${err.message}`);
+                    recordFailure(req.params.id, action, err.message);
+                    auditLog({
+                        userId: (req as AuthenticatedRequest).userId,
+                        agentId: req.params.id,
+                        action,
+                        status: "failed",
+                        reason: err.message,
+                    });
+                }
+            }
+
+            // Handle schedule intent — convert interval to cron DIRECTLY here
+            if (intent.type === "schedule" && intent.action && intent.interval) {
+                const cron = intervalToCron(intent.interval);
+                if (!cron) {
+                    executedReplies.push(`⚠️ I don't support the interval "${intent.interval}". Try: 5m, 10m, 30m, 1h, 2h, 6h, 12h, 24h, daily, or hourly.`);
+                } else {
+                    try {
+                        const jobName = `${req.params.id}-${intent.action}`;
+                        const jobId = await scheduleCronJob(jobName, {
+                            agentId: req.params.id,
+                            action: intent.action,
+                            params: intent.params || {},
+                        }, cron);
+
+                        if (jobId) {
+                            executedReplies.push(`⏰ Done! I'll run "${intent.action}" every ${intent.interval} automatically. You can say "stop ${intent.action}" anytime to cancel.`);
+                            broadcast("cron:scheduled", { agentId: req.params.id, action: intent.action, interval: intent.interval, cron, jobId });
+                        } else {
+                            executedReplies.push("⚠️ Scheduler unavailable — Redis isn't connected. The job wasn't created.");
+                        }
+                    } catch (err: any) {
+                        executedReplies.push(`❌ Failed to schedule: ${err.message}`);
+                    }
+                }
+            }
+
+            // Handle unschedule intent
+            if (intent.type === "unschedule" && intent.action) {
+                try {
+                    const jobs = await listScheduledJobs();
+                    const targetAction = intent.action;
+                    let removed = 0;
+
+                    for (const job of jobs) {
+                        const matchesAgent = job.name?.startsWith(req.params.id) || job.key?.includes(req.params.id);
+                        const matchesAction = targetAction === "all" || job.name?.includes(targetAction) || job.key?.includes(targetAction);
+
+                        if (matchesAgent && matchesAction) {
+                            await removeScheduledJob(job.name, job.pattern || job.cron);
+                            removed++;
+                        }
+                    }
+
+                    if (removed > 0) {
+                        executedReplies.push(`✅ Removed ${removed} scheduled job(s) for "${targetAction}".`);
+                        broadcast("cron:unscheduled", { agentId: req.params.id, action: targetAction, removed });
+                    } else {
+                        executedReplies.push(`ℹ️ No scheduled jobs found for "${targetAction}".`);
+                    }
+                } catch (err: any) {
+                    executedReplies.push(`❌ Failed to unschedule: ${err.message}`);
+                }
+            }
+
+            // Handle delay intent — convert delay to ms DIRECTLY here
+            if (intent.type === "delay" && intent.action && intent.delay) {
+                const ms = delayToMs(intent.delay);
+                if (!ms) {
+                    executedReplies.push(`⚠️ I don't support the delay "${intent.delay}". Try: 1m, 5m, 10m, 30m, 1h, 2h, 3h, 6h, 12h, or 24h.`);
+                } else {
+                    try {
+                        const jobName = `${req.params.id}-delayed-${intent.action}-${Date.now()}`;
+                        const jobId = await scheduleDelayedJob(jobName, {
+                            agentId: req.params.id,
+                            action: intent.action,
+                            params: intent.params || {},
+                        }, ms);
+
+                        if (jobId) {
+                            const humanDelay = ms >= 3_600_000 ? `${ms / 3_600_000} hour(s)` : `${ms / 60_000} minute(s)`;
+                            const paramDesc = intent.params?.to
+                                ? ` — sending ${intent.params.amount || ""} SOL to ${intent.params.to}`
+                                : "";
+                            executedReplies.push(`⏳ Got it! I'll execute "${intent.action}" in ${humanDelay}${paramDesc}. Job queued.`);
+                            broadcast("cron:delayed", { agentId: req.params.id, action: intent.action, delay: intent.delay, delayMs: ms, jobId });
+                        } else {
+                            executedReplies.push("⚠️ Scheduler unavailable — Redis isn't connected. Delayed job not created.");
+                        }
+                    } catch (err: any) {
+                        executedReplies.push(`❌ Failed to create delayed job: ${err.message}`);
+                    }
                 }
             }
         }
@@ -656,7 +866,7 @@ app.get("/api/scheduler/jobs", async (_req, res) => {
     res.json(jobs);
 });
 
-app.post("/api/scheduler/schedule", async (req, res) => {
+app.post("/api/scheduler/schedule", schedulerGuardrailMiddleware as any, async (req: AuthenticatedRequest, res) => {
     try {
         const { agentId, action, params, cron } = req.body;
         const jobId = await scheduleCronJob(
@@ -806,12 +1016,96 @@ async function start() {
     if (redisReady) {
         createWorker(async (data) => {
             const agent = agentManager.get(data.agentId);
-            if (agent) {
-                const result = await derMercist.run(agent);
-                broadcast("cron:executed", { result });
+            if (!agent) {
+                console.warn(`[Worker] Agent ${data.agentId} not found, skipping job`);
+                return;
+            }
+
+            const action = data.action || "dermercist";
+            console.log(`[Worker] Executing ${action} for agent ${data.agentId}`);
+
+            try {
+                let result: any = {};
+
+                if (action === "scam_check") {
+                    const { checkTokenSafety } = await import("./skills/scamFilter.js");
+                    const { TOKEN_PROGRAM_ID } = await import("@solana/spl-token");
+                    const keypair = agent.getKeypair();
+                    const tokenAccounts = await connection.getParsedTokenAccountsByOwner(
+                        keypair.publicKey, { programId: TOKEN_PROGRAM_ID });
+                    const flagged: string[] = [];
+                    for (const ta of tokenAccounts.value.slice(0, 5)) {
+                        const mint = ta.account.data.parsed?.info?.mint;
+                        if (!mint) continue;
+                        try {
+                            const check = await checkTokenSafety(connection, new PublicKey(mint));
+                            if (!check.safe) flagged.push(mint);
+                        } catch { }
+                    }
+                    result = { action: "scam_check", scanned: tokenAccounts.value.length, flagged: flagged.length };
+                } else if (action === "scan_airdrops") {
+                    const execResult = await agent.execute({ action: "scan_airdrops" as any, params: {} });
+                    result = { action: "scan_airdrops", ...execResult };
+                } else if (action === "recover") {
+                    const { findAllRecoverable } = await import("./skills/solRecovery.js");
+                    const { createCloseAccountInstruction } = await import("@solana/spl-token");
+                    const { Transaction: Tx } = await import("@solana/web3.js");
+                    const keypair = agent.getKeypair();
+                    const recoverable = await findAllRecoverable(connection, keypair.publicKey);
+                    if (recoverable.length > 0) {
+                        const batch = recoverable.slice(0, 10);
+                        const tx = new Tx();
+                        for (const acc of batch) {
+                            tx.add(createCloseAccountInstruction(acc.address, keypair.publicKey, keypair.publicKey));
+                        }
+                        const sig = await connection.sendTransaction(tx, [keypair]);
+                        await connection.confirmTransaction(sig, "confirmed");
+                        result = { action: "recover", recovered: batch.length, signature: sig };
+                    } else {
+                        result = { action: "recover", recovered: 0 };
+                    }
+                } else if (action === "transfer") {
+                    const { Transaction: Tx, SystemProgram, LAMPORTS_PER_SOL } = await import("@solana/web3.js");
+                    const keypair = agent.getKeypair();
+                    const to = data.params?.to;
+                    const amount = parseFloat(data.params?.amount || "0");
+                    if (to && amount > 0) {
+                        const tx = new Tx().add(
+                            SystemProgram.transfer({
+                                fromPubkey: keypair.publicKey,
+                                toPubkey: new PublicKey(to),
+                                lamports: Math.round(amount * LAMPORTS_PER_SOL),
+                            })
+                        );
+                        const sig = await connection.sendTransaction(tx, [keypair]);
+                        await connection.confirmTransaction(sig, "confirmed");
+                        result = { action: "transfer", to, amount, signature: sig };
+                    } else {
+                        result = { action: "transfer", error: "Missing to/amount params" };
+                    }
+                } else if (action === "airdrop") {
+                    const sig = await connection.requestAirdrop(agent.getKeypair().publicKey, 1e9);
+                    await connection.confirmTransaction(sig, "confirmed");
+                    result = { action: "airdrop", signature: sig };
+                } else {
+                    // Default: run derMercist
+                    const dmResult = await derMercist.run(agent);
+                    result = { action: "dermercist", ...dmResult };
+                }
+
+                broadcast("cron:executed", { agentId: data.agentId, ...result });
+            } catch (err: any) {
+                console.error(`[Worker] ${action} failed for ${data.agentId}:`, err.message);
+                broadcast("cron:failed", { agentId: data.agentId, action, error: err.message });
             }
         });
     }
+
+    // ─── Audit Log ───
+    app.get("/api/agents/:id/audit", (req, res) => {
+        const entries = getAuditLog(req.params.id, 100);
+        res.json(entries);
+    });
 
     // Start Express
     app.listen(PORT, () => {

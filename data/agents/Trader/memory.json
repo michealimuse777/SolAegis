@@ -1,0 +1,27 @@
+{
+  "preferences": {
+    "strategy": "conservative"
+  },
+  "notes": [
+    "User doesn't transfer more than 1 SOL a day"
+  ],
+  "successfulActions": [
+    {
+      "action": "swap",
+      "timestamp": 1772370994548,
+      "detail": "⚠️ Action \"swap\" recognized but execution not implemented yet."
+    },
+    {
+      "action": "recover",
+      "timestamp": 1772374126284,
+      "detail": "ℹ️ No empty token accounts found. Nothing to recover."
+    },
+    {
+      "action": "scam_check",
+      "timestamp": 1772374159893,
+      "detail": "🔍 **Scam Scan** — 2 token(s) found:\n\n⚠️ **AZEPqpuF...** — Risk: 60/100 (Mint au"
+    }
+  ],
+  "lastFailures": [],
+  "lastUpdated": 1772374347151
+}

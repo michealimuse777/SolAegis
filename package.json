@@ -11,22 +11,31 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@coral-xyz/anchor": "^0.32.1",
+    "@orca-so/common-sdk": "^0.7.0",
+    "@orca-so/whirlpools-sdk": "^0.20.0",
     "@raydium-io/raydium-sdk-v2": "^0.2.32-alpha",
     "@solana/spl-token": "^0.4.0",
     "@solana/spl-token-swap": "^0.4.4",
     "@solana/web3.js": "^1.95.0",
+    "bs58": "^5.0.0",
     "bullmq": "^5.0.0",
     "chalk": "^5.3.0",
     "cors": "^2.8.5",
+    "decimal.js": "^10.6.0",
     "dotenv": "^16.4.0",
     "express": "^4.18.0",
     "inquirer": "^9.2.0",
     "ioredis": "^5.3.0",
-    "ws": "^8.16.0"
+    "jsonwebtoken": "^9.0.3",
+    "tweetnacl": "^1.0.3",
+    "ws": "^8.16.0",
+    "zod": "^4.3.6"
   },
   "devDependencies": {
     "@types/cors": "^2.8.0",
     "@types/express": "^4.17.0",
+    "@types/jsonwebtoken": "^9.0.10",
     "@types/node": "^20.0.0",
     "@types/ws": "^8.5.0",
     "ts-node": "^10.9.0",

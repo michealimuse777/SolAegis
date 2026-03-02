@@ -8,14 +8,85 @@ import {
     AgentConfig,
     RiskProfile,
 } from "./agentConfig.js";
+import { loadMemory, setPreference, addNote, memoryToPrompt } from "./memory.js";
+import { getMarketData, marketToPrompt } from "../services/marketData.js";
 
 // ─────────── Types ───────────
 
 export interface ChatIntent {
-    type: "execute_action" | "update_config" | "reload_skills" | "query_status" | "explain" | "unknown";
+    type: "execute_action" | "update_config" | "reload_skills" | "query_status" | "explain" | "schedule" | "unschedule" | "delay" | "remember" | "market_query" | "capability_check" | "unknown";
     action?: string;
     params?: Record<string, any>;
     configUpdates?: Partial<Pick<AgentConfig, "role" | "riskProfile" | "dailyTxLimit" | "allowedActions">>;
+    interval?: string;  // e.g. "6h", "30m", "daily" — for schedule intent
+    delay?: string;     // e.g. "6h", "30m", "2h" — for delay (one-shot) intent
+}
+
+// ─────────── Safe Interval → Cron ───────────
+// LLM NEVER generates cron directly. Only these safe intervals are accepted.
+
+const INTERVAL_MAP: Record<string, string> = {
+    "1m": "* * * * *",
+    "5m": "*/5 * * * *",
+    "10m": "*/10 * * * *",
+    "15m": "*/15 * * * *",
+    "30m": "*/30 * * * *",
+    "1h": "0 * * * *",
+    "2h": "0 */2 * * *",
+    "3h": "0 */3 * * *",
+    "4h": "0 */4 * * *",
+    "6h": "0 */6 * * *",
+    "8h": "0 */8 * * *",
+    "12h": "0 */12 * * *",
+    "24h": "0 0 * * *",
+    "daily": "0 0 * * *",
+    "hourly": "0 * * * *",
+    "every hour": "0 * * * *",
+    "every day": "0 0 * * *",
+    "every 5 minutes": "*/5 * * * *",
+    "every 10 minutes": "*/10 * * * *",
+    "every 30 minutes": "*/30 * * * *",
+    "every 6 hours": "0 */6 * * *",
+    "every 12 hours": "0 */12 * * *",
+};
+
+export function intervalToCron(interval: string): string | null {
+    const key = interval.toLowerCase().trim();
+    return INTERVAL_MAP[key] || null;
+}
+
+// ─────────── Safe Delay → Milliseconds ───────────
+// LLM provides human-readable delay, we convert safely.
+
+const DELAY_MAP: Record<string, number> = {
+    "1m": 60_000,
+    "5m": 300_000,
+    "10m": 600_000,
+    "15m": 900_000,
+    "30m": 1_800_000,
+    "1h": 3_600_000,
+    "2h": 7_200_000,
+    "3h": 10_800_000,
+    "4h": 14_400_000,
+    "6h": 21_600_000,
+    "8h": 28_800_000,
+    "12h": 43_200_000,
+    "24h": 86_400_000,
+    "in 1 minute": 60_000,
+    "in 5 minutes": 300_000,
+    "in 10 minutes": 600_000,
+    "in 30 minutes": 1_800_000,
+    "in 1 hour": 3_600_000,
+    "in 2 hours": 7_200_000,
+    "in 3 hours": 10_800_000,
+    "in 6 hours": 21_600_000,
+    "in 12 hours": 43_200_000,
+    "in 24 hours": 86_400_000,
+};
+
+export function delayToMs(delay: string): number | null {
+    const key = delay.toLowerCase().trim();
+    return DELAY_MAP[key] ?? null;
 }
 
 export interface ChatResponse {
@@ -96,6 +167,24 @@ export class ChatHandler {
                 case "explain":
                     response = this.handleExplain(agentId, config, skills);
                     break;
+                case "schedule":
+                    response = this.handleSchedule(agentId, intent, config);
+                    break;
+                case "unschedule":
+                    response = this.handleUnschedule(agentId, intent);
+                    break;
+                case "delay":
+                    response = this.handleDelay(agentId, intent, config);
+                    break;
+                case "remember":
+                    response = this.handleRemember(agentId, intent);
+                    break;
+                case "market_query":
+                    response = await this.handleMarketQuery(agentId, config);
+                    break;
+                case "capability_check":
+                    response = this.handleCapabilityCheck(agentId, intent, config);
+                    break;
                 default:
                     response = await this.handleConversation(agentId, message, config, skills, history);
                     break;
@@ -145,36 +234,68 @@ ACTION MAPPING (use these mappings for synonyms):
 - "swap", "trade", "exchange", "buy", "sell" → action: "swap"
 - "airdrop", "get SOL", "airdrop me", "fund me", "fund wallet", "give me SOL" → action: "airdrop"
 
+- "schedule", "schedule task", "run every", "every X hours", "repeat", "automate" → type: "schedule" (with action + interval fields)
+- "stop schedule", "cancel schedule", "unschedule", "stop repeating", "remove schedule" → type: "unschedule" (with action field)
+- "in X hours", "in X minutes", "after X hours", "later", "delayed" → type: "delay" (with action + delay + params fields. This is ONE-TIME execution, not repeating)
+
+- "remember", "I prefer", "note that", "keep in mind", "my preference", "what do you remember" → type: "remember" (with params.preference or params.note)
+- "what's the price", "SOL price", "market", "how's the market", "price of solana", "market update" → type: "market_query"
+
 Intent types:
-- "execute_action": User wants to perform an action. The action field maps to: transfer, swap, recover, scan_airdrops, scam_check, airdrop
+- "execute_action": User wants to perform an action NOW
+- "schedule": User wants to SCHEDULE an action to REPEAT automatically. Must include action and interval fields.
+  Valid intervals: "5m", "10m", "15m", "30m", "1h", "2h", "3h", "4h", "6h", "8h", "12h", "24h", "daily", "hourly"
+- "delay": User wants to execute an action ONCE after a delay. Must include action, delay, and params fields.
+  Valid delays: "1m", "5m", "10m", "30m", "1h", "2h", "3h", "6h", "12h", "24h"
+- "unschedule": User wants to STOP/CANCEL a scheduled action. Must include action field.
 - "update_config": User wants to change agent settings (risk profile, daily limit, role)
 - "reload_skills": User wants agent to reload its SKILLS.md
 - "query_status": User asks about balance, status, portfolio, or history
-- "explain": User asks what the agent can do, its config, or capabilities
+- "remember": User wants agent to remember a preference or note. Store in params.preference (key:value) or params.note (string)
+- "market_query": User asks about SOL price, market conditions, or trends
+- "capability_check": User asks if the agent CAN do something ("can you bridge?", "do you support X?", "can you trade ETH?"). Include the requested capability in params.capability
+- "explain": User asks what the agent CAN do, its config, or general capabilities ("what can you do?", "what are your capabilities?")
 - "unknown": General conversation, questions, or unclear intent
 
 Format (always return an array):
 [
-  { "type": "execute_action", "action": "recover", "params": {} },
-  { "type": "execute_action", "action": "scam_check", "params": {} }
+  { "type": "schedule", "action": "scam_check", "interval": "6h" }
 ]
 
 Examples:
 "Send 0.1 SOL to ABC123" → [{"type":"execute_action","action":"transfer","params":{"to":"ABC123","amount":"0.1"}}]
 "Recover lost SOL" → [{"type":"execute_action","action":"recover","params":{}}]
-"Recover rent" → [{"type":"execute_action","action":"recover","params":{}}]
 "Scan for risk" → [{"type":"execute_action","action":"scam_check","params":{}}]
-"Check my tokens for scams" → [{"type":"execute_action","action":"scam_check","params":{}}]
 "Is this token safe? ABC123" → [{"type":"execute_action","action":"scam_check","params":{"mint":"ABC123"}}]
 "Scan for airdrops" → [{"type":"execute_action","action":"scan_airdrops","params":{}}]
-"Airdrop me SOL and then scan my wallet" → [{"type":"execute_action","action":"airdrop","params":{}},{"type":"execute_action","action":"scan_airdrops","params":{}}]
-"Send 0.5 SOL to XYZ and recover rent" → [{"type":"execute_action","action":"transfer","params":{"to":"XYZ","amount":"0.5"}},{"type":"execute_action","action":"recover","params":{}}]
+"Airdrop me SOL and recover rent" → [{"type":"execute_action","action":"airdrop","params":{}},{"type":"execute_action","action":"recover","params":{}}]
 "Switch to low risk and reload skills" → [{"type":"update_config","configUpdates":{"riskProfile":"low"}},{"type":"reload_skills"}]
-"What's my balance?" → [{"type":"query_status"}]
+"Scan for scam tokens every 6 hours" → [{"type":"schedule","action":"scam_check","interval":"6h"}]
+"Check for airdrops every hour" → [{"type":"schedule","action":"scan_airdrops","interval":"1h"}]
+"Recover rent daily" → [{"type":"schedule","action":"recover","interval":"daily"}]
+"Run scam check every 30 minutes" → [{"type":"schedule","action":"scam_check","interval":"30m"}]
+"Transfer 0.01 SOL to XYZ every 12 hours" → [{"type":"schedule","action":"transfer","interval":"12h","params":{"to":"XYZ","amount":"0.01"}}]
+"Transfer 0.1 SOL to ABC in 6 hours" → [{"type":"delay","action":"transfer","delay":"6h","params":{"to":"ABC","amount":"0.1"}}]
+"Send 0.5 SOL to XYZ in 2 hours" → [{"type":"delay","action":"transfer","delay":"2h","params":{"to":"XYZ","amount":"0.5"}}]
+"Airdrop me SOL in 30 minutes" → [{"type":"delay","action":"airdrop","delay":"30m","params":{}}]
+"Scan for scams in 1 hour" → [{"type":"delay","action":"scam_check","delay":"1h","params":{}}]
+"Recover rent in 3 hours" → [{"type":"delay","action":"recover","delay":"3h","params":{}}]
+"Stop scanning for scams" → [{"type":"unschedule","action":"scam_check"}]
+"Cancel the scheduled recover" → [{"type":"unschedule","action":"recover"}]
+"Stop all scheduled tasks" → [{"type":"unschedule","action":"all"}]
 "What can you do?" → [{"type":"explain"}]
+"What's my balance?" → [{"type":"query_status"}]
+"I prefer conservative strategies" → [{"type":"remember","params":{"preference":{"strategy":"conservative"}}}]
+"Remember that I don't like risky trades" → [{"type":"remember","params":{"note":"User doesn't like risky trades"}}]
+"What do you remember about me?" → [{"type":"remember","params":{"recall":true}}]
+"What's the SOL price?" → [{"type":"market_query"}]
+"How's the market?" → [{"type":"market_query"}]
+"Can you bridge SOL to Ethereum?" → [{"type":"capability_check","params":{"capability":"bridge"}}]
+"Can you trade ETH?" → [{"type":"capability_check","params":{"capability":"trade ETH"}}]
+"Do you support staking?" → [{"type":"capability_check","params":{"capability":"staking"}}]
+"Can you do NFTs?" → [{"type":"capability_check","params":{"capability":"NFT operations"}}]
+"Can you lend SOL?" → [{"type":"capability_check","params":{"capability":"lending"}}]
 "Hello" → [{"type":"unknown"}]
-"Clean up my wallet" → [{"type":"execute_action","action":"recover","params":{}}]
-"Airdrop me SOL, scan for scams, and recover rent" → [{"type":"execute_action","action":"airdrop","params":{}},{"type":"execute_action","action":"scam_check","params":{}},{"type":"execute_action","action":"recover","params":{}}]
 
 User message: "${message}"`;
 
@@ -290,9 +411,81 @@ User message: "${message}"`;
      * Explain capabilities.
      */
     private handleExplain(agentId: string, config: AgentConfig, skills: string): ChatResponse {
+        const actionDescriptions: Record<string, string> = {
+            transfer: "Send SOL to any wallet address",
+            recover: "Scan & close empty token accounts to reclaim rent",
+            scam_check: "Analyze tokens for scam indicators (freeze auth, supply concentration, metadata)",
+            scan_airdrops: "Scan wallet for airdropped tokens",
+            airdrop: "Request devnet SOL (1 SOL per request)",
+        };
+
+        const actionList = config.allowedActions
+            .map(a => `  - ${a}: ${actionDescriptions[a] || "Custom action"}`)
+            .join("\n");
+
         return {
-            reply: `🤖 **I am ${agentId}** — a ${config.role} agent on Solana devnet.\n\n**What I can do:**\n${config.allowedActions.map(a => `- \`${a}\``).join("\n")}\n\n**My limits:**\n- Max ${config.maxSolPerTx} SOL per transaction\n- ${config.dailyTxLimit} transactions per day\n- Risk profile: ${config.riskProfile}\n\n**My strategy:**\n${skills.split("\n").slice(0, 10).join("\n")}...\n\nAsk me to do something, or say "reload your skills" to update my behavior.`,
+            reply: `🤖 I'm ${agentId}, a ${config.role} agent on Solana devnet.\n\nHere's what I can do:\n${actionList}\n\nMy limits:\n  - Max ${config.maxSolPerTx} SOL per transaction\n  - ${config.dailyTxLimit} transactions per day\n  - Risk profile: ${config.riskProfile}\n\nI can also schedule tasks, check market prices, and remember your preferences. Just ask!`,
             intent: { type: "explain" },
+        };
+    }
+
+    /**
+     * Capability guard — mature rejection for unsupported capabilities.
+     */
+    private handleCapabilityCheck(agentId: string, intent: ChatIntent, config: AgentConfig): ChatResponse {
+        const capability = intent.params?.capability || "unknown";
+        const capLower = capability.toLowerCase();
+
+        // Map of known platform capabilities and whether this agent supports them
+        const KNOWN_CAPABILITIES: Record<string, { supported: boolean; action?: string }> = {
+            transfer: { supported: true, action: "transfer" },
+            send: { supported: true, action: "transfer" },
+            recover: { supported: true, action: "recover" },
+            "scam check": { supported: true, action: "scam_check" },
+            "scan airdrops": { supported: true, action: "scan_airdrops" },
+            airdrop: { supported: true, action: "airdrop" },
+            schedule: { supported: true },
+            memory: { supported: true },
+            "market data": { supported: true },
+        };
+
+        // Check if it's a known supported capability
+        for (const [key, val] of Object.entries(KNOWN_CAPABILITIES)) {
+            if (capLower.includes(key)) {
+                if (val.action && !config.allowedActions.includes(val.action)) {
+                    return {
+                        reply: `I have the "${val.action}" capability built in, but it's not currently enabled for me. You can enable it in my configuration settings.`,
+                    };
+                }
+                return {
+                    reply: `Yes! I can ${key}. Just tell me what you need and I'll handle it.`,
+                };
+            }
+        }
+
+        // Unsupported capability — clean, mature rejection
+        const unsupportedCapabilities = [
+            "bridge", "bridging", "cross-chain",
+            "eth", "ethereum", "bitcoin", "btc", "polygon", "avalanche", "arbitrum",
+            "staking", "stake", "unstake", "delegate",
+            "nft", "nfts", "mint nft", "create nft",
+            "lending", "lend", "borrow", "borrowing",
+            "yield farming", "farming", "yield",
+            "margin", "leverage", "futures", "perpetual",
+            "options", "derivatives",
+        ];
+
+        const isKnownUnsupported = unsupportedCapabilities.some(u => capLower.includes(u));
+
+        if (isKnownUnsupported) {
+            return {
+                reply: `I'm not configured to perform ${capability}. My current capabilities are focused on Solana devnet operations: ${config.allowedActions.join(", ")}.\n\nThis isn't a limitation of the platform — it just hasn't been enabled for me. You can add new capabilities through my configuration, or I can operate in a read-only research mode if that helps.`,
+            };
+        }
+
+        // Completely unknown
+        return {
+            reply: `I don't recognize "${capability}" as something I can do. Here's what I'm capable of: ${config.allowedActions.join(", ")}, scheduling, market data, and memory.\n\nIf you need something outside my current scope, let me know and I can suggest alternatives.`,
         };
     }
 
@@ -318,7 +511,7 @@ Your config:
 - Risk profile: ${config.riskProfile}
 
 Respond helpfully and in character. Be concise. If the user wants you to do something, explain what action you'd take and ask them to confirm. You cannot directly execute — only through the policy system.
-
+${memoryToPrompt(agentId)}
 Recent conversation:
 ${history.slice(-6).map(m => `${m.role}: ${m.content}`).join("\n")}`;
 
@@ -330,6 +523,203 @@ ${history.slice(-6).map(m => `${m.role}: ${m.content}`).join("\n")}`;
             return { reply: reply.trim() };
         } catch (err: any) {
             return { reply: `I'm having trouble thinking right now. (${err.message})` };
+        }
+    }
+
+    /**
+     * Handle scheduling — converts natural language intervals to cron safely.
+     * LLM NEVER generates cron. Only validated intervals are accepted.
+     */
+    private handleSchedule(
+        agentId: string,
+        intent: ChatIntent,
+        config: AgentConfig,
+    ): ChatResponse {
+        const action = intent.action;
+        const interval = intent.interval;
+
+        if (!action) {
+            return { reply: "⚠️ I need to know WHAT to schedule. Try: \"Scan for scams every 6 hours\"" };
+        }
+
+        if (!interval) {
+            return { reply: `⚠️ I need to know HOW OFTEN to run \`${action}\`. Try: \"every 6h\", \"daily\", \"every 30m\"` };
+        }
+
+        // Safe interval → cron conversion (NEVER trust LLM-generated cron)
+        const cron = intervalToCron(interval);
+        if (!cron) {
+            const validIntervals = Object.keys(INTERVAL_MAP).slice(0, 12).join(", ");
+            return { reply: `⚠️ Invalid interval \"${interval}\". Supported: ${validIntervals}` };
+        }
+
+        // Policy check — is this action allowed?
+        if (!config.allowedActions.includes(action) && action !== "airdrop" && action !== "scam_check") {
+            return {
+                reply: `⛔ Cannot schedule \`${action}\` — not in your allowed actions [${config.allowedActions.join(", ")}].`,
+                intent,
+            };
+        }
+
+        // Return intent for backend to execute via BullMQ
+        return {
+            reply: `⏰ **Schedule Approved**\n\nAction: \`${action}\`\nInterval: **${interval}** (cron: \`${cron}\`)\n\nCreating scheduled job...`,
+            intent: { ...intent, params: { ...intent.params, cron } },
+        };
+    }
+
+    /**
+     * Handle unscheduling — removes scheduled jobs.
+     */
+    private handleUnschedule(agentId: string, intent: ChatIntent): ChatResponse {
+        const action = intent.action;
+
+        if (!action) {
+            return { reply: "⚠️ I need to know WHAT to unschedule. Try: \"Stop scanning for scams\" or \"Stop all scheduled tasks\"" };
+        }
+
+        return {
+            reply: `🛑 **Unschedule Requested**\n\nRemoving scheduled \`${action}\` job(s)...`,
+            intent,
+        };
+    }
+
+    /**
+     * Handle delayed one-shot execution.
+     * e.g. "Transfer 0.1 SOL to XYZ in 6 hours"
+     */
+    private handleDelay(
+        agentId: string,
+        intent: ChatIntent,
+        config: AgentConfig,
+    ): ChatResponse {
+        const action = intent.action;
+        const delay = intent.delay;
+
+        if (!action) {
+            return { reply: "⚠️ I need to know WHAT to do. Try: \"Transfer 0.1 SOL to XYZ in 6 hours\"" };
+        }
+
+        if (!delay) {
+            return { reply: `⚠️ I need to know WHEN to run \`${action}\`. Try: \"in 1h\", \"in 6 hours\", \"in 30m\"` };
+        }
+
+        const ms = delayToMs(delay);
+        if (!ms) {
+            const validDelays = Object.keys(DELAY_MAP).slice(0, 13).join(", ");
+            return { reply: `⚠️ Invalid delay "${delay}". Supported: ${validDelays}` };
+        }
+
+        // Policy check
+        if (!config.allowedActions.includes(action) && action !== "airdrop" && action !== "scam_check") {
+            return {
+                reply: `⛔ Cannot delay-execute \`${action}\` — not in your allowed actions [${config.allowedActions.join(", ")}].`,
+                intent,
+            };
+        }
+
+        const humanTime = ms >= 3_600_000 ? `${ms / 3_600_000}h` : `${ms / 60_000}m`;
+        return {
+            reply: `⏳ **Delayed Execution Approved**\n\nAction: \`${action}\`\nWill execute in: **${humanTime}**\nParams: ${JSON.stringify(intent.params || {})}\n\nCreating delayed job...`,
+            intent: { ...intent, params: { ...intent.params, delayMs: ms } },
+        };
+    }
+
+    /**
+     * Handle memory operations — store preferences, notes, recall.
+     */
+    private handleRemember(agentId: string, intent: ChatIntent): ChatResponse {
+        const params = intent.params || {};
+
+        // Recall — show what's remembered
+        if (params.recall) {
+            const mem = loadMemory(agentId);
+            const prefEntries = Object.entries(mem.preferences);
+            const parts: string[] = [];
+
+            if (prefEntries.length > 0) {
+                parts.push("Your preferences:\n" + prefEntries.map(([k, v]) => `  - ${k}: ${v}`).join("\n"));
+            }
+            if (mem.notes.length > 0) {
+                parts.push("Your notes:\n" + mem.notes.map(n => `  - ${n}`).join("\n"));
+            }
+            if (mem.successfulActions.length > 0) {
+                parts.push(`I've completed ${mem.successfulActions.length} actions successfully.`);
+            }
+            if (mem.lastFailures.length > 0) {
+                parts.push(`${mem.lastFailures.length} recent failures logged.`);
+            }
+
+            if (parts.length === 0) {
+                return { reply: "I don't have any stored memories yet. Tell me your preferences or give me notes to remember!" };
+            }
+            return { reply: "🧠 Here's what I remember:\n\n" + parts.join("\n\n") };
+        }
+
+        // Store preference
+        if (params.preference && typeof params.preference === "object") {
+            const entries = Object.entries(params.preference);
+            for (const [key, value] of entries) {
+                setPreference(agentId, key, String(value));
+            }
+            return {
+                reply: `🧠 Got it! I'll remember: ${entries.map(([k, v]) => `${k} = ${v}`).join(", ")}. This will influence my decisions going forward.`,
+            };
+        }
+
+        // Store note
+        if (params.note) {
+            addNote(agentId, String(params.note));
+            return {
+                reply: `📝 Noted! I've saved: "${params.note}". I'll keep this in mind.`,
+            };
+        }
+
+        return { reply: "I'm not sure what to remember. Try: \"I prefer conservative strategies\" or \"Note that I only trade during weekdays\"." };
+    }
+
+    /**
+     * Handle market data queries — fetch SOL price and let LLM interpret.
+     */
+    private async handleMarketQuery(agentId: string, config: AgentConfig): Promise<ChatResponse> {
+        try {
+            const snapshot = await getMarketData();
+
+            if (snapshot.sol_price === 0) {
+                return { reply: "I couldn't fetch market data right now. CoinGecko might be rate-limiting us. Try again in a minute." };
+            }
+
+            const trendEmoji = snapshot.trend === "up" ? "📈" : snapshot.trend === "down" ? "📉" : "➡️";
+            const changeStr = snapshot.change_24h > 0 ? `+${snapshot.change_24h}%` : `${snapshot.change_24h}%`;
+            const volStr = snapshot.volume_24h > 1_000_000_000
+                ? `$${(snapshot.volume_24h / 1_000_000_000).toFixed(1)}B`
+                : `$${(snapshot.volume_24h / 1_000_000).toFixed(0)}M`;
+
+            // Feed to LLM for interpretation with agent's risk profile
+            const prompt = `You are "${agentId}", a ${config.role} agent with ${config.riskProfile} risk profile.
+Given this market data, provide a brief, helpful analysis in 2-3 sentences:
+
+SOL Price: $${snapshot.sol_price}
+24h Change: ${changeStr}
+Trend: ${snapshot.trend}
+24h Volume: ${volStr}
+Market Cap: $${(snapshot.market_cap / 1_000_000_000).toFixed(1)}B
+
+Be concise and specific. Relate it to the agent's role and risk profile.`;
+
+            try {
+                const analysis = await this.llmManager.complete(prompt, 200);
+                return {
+                    reply: `${trendEmoji} SOL is at $${snapshot.sol_price} (${changeStr} in 24h)\nVolume: ${volStr}\n\n${analysis.trim()}`,
+                };
+            } catch {
+                // LLM failed — return raw data
+                return {
+                    reply: `${trendEmoji} SOL is at $${snapshot.sol_price} (${changeStr} in 24h)\nVolume: ${volStr} | Market Cap: $${(snapshot.market_cap / 1_000_000_000).toFixed(1)}B`,
+                };
+            }
+        } catch (err: any) {
+            return { reply: `Couldn't fetch market data: ${err.message}` };
         }
     }
 }
