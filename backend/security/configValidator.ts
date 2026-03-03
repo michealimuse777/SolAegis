@@ -7,11 +7,11 @@ import { z } from "zod";
 // ─────────── Schema ───────────
 
 export const AgentConfigSchema = z.object({
-    role: z.enum(["trader", "monitor", "collector", "guardian", "custom"]).default("custom"),
-    maxSolPerTx: z.number().min(0.001).max(5).default(0.5),
-    dailyTxLimit: z.number().int().min(1).max(50).default(10),
+    role: z.enum(["trader", "monitor", "recovery", "custom"]).default("custom"),
+    maxSolPerTx: z.number().min(0).max(5).default(0.5),
+    dailyTxLimit: z.number().int().min(0).max(50).default(10),
     allowedActions: z.array(
-        z.enum(["transfer", "recover", "scan_airdrops", "scam_check", "airdrop"])
+        z.enum(["transfer", "recover", "scan_airdrops", "scam_check", "airdrop", "swap"])
     ).min(1, "At least one action must be allowed"),
     riskProfile: z.enum(["low", "medium", "high"]).default("low"),
 });
@@ -32,7 +32,7 @@ export const ConfigUpdateSchema = z.object({
     dailyTxLimit: z.number().int().min(1).max(50).optional(),
     maxSolPerTx: z.number().min(0.001).max(5).optional(),
     allowedActions: z.array(
-        z.enum(["transfer", "recover", "scan_airdrops", "scam_check", "airdrop"])
+        z.enum(["transfer", "recover", "scan_airdrops", "scam_check", "airdrop", "swap"])
     ).min(1).optional(),
 }).refine(obj => Object.keys(obj).length > 0, {
     message: "At least one field must be provided for update",

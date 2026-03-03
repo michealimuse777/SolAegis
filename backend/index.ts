@@ -146,9 +146,18 @@ app.post("/api/auth/wallet/verify", (req, res) => {
 app.get("/api/agents", async (req: AuthenticatedRequest, res) => {
     try {
         const states = await agentManager.listStates();
-        // Only return agents owned by this user
         if (req.userId) {
-            const ownedIds = getUserAgents(req.userId);
+            let ownedIds = getUserAgents(req.userId);
+
+            // Auto-claim: if user has 0 agents but agents exist on disk, auto-assign unowned ones
+            if (ownedIds.length === 0 && Array.isArray(states) && states.length > 0) {
+                for (const s of states) {
+                    assignAgentToUser(req.userId, (s as any).id);
+                }
+                ownedIds = getUserAgents(req.userId);
+                console.log(`[Auth] Auto-claimed ${ownedIds.length} agent(s) for user ${req.userId}`);
+            }
+
             const filtered = (Array.isArray(states) ? states : []).filter(
                 (a: any) => ownedIds.includes(a.id)
             );

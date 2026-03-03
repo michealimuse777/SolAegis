@@ -5,3 +5,7 @@
 {"userId":"alice","agentId":"AliceBot","action":"prompt_injection","status":"denied","reason":"role_manipulation: DAN\\s+mode","timestamp":1772436566980,"iso":"2026-03-02T07:29:26.980Z"}
 {"userId":"wallet:7yySoYz7q6Qir8oeznFCpqMrtxRSsiuvUHTEwamMetDU","agentId":"Trading Agent","action":"create_agent","status":"success","timestamp":1772447120161,"iso":"2026-03-02T10:25:20.161Z"}
 {"userId":"wallet:7yySoYz7q6Qir8oeznFCpqMrtxRSsiuvUHTEwamMetDU","agentId":"gobot","action":"create_agent","status":"success","timestamp":1772447231683,"iso":"2026-03-02T10:27:11.683Z"}
+{"userId":"wallet:7yySoYz7q6Qir8oeznFCpqMrtxRSsiuvUHTEwamMetDU","agentId":"trader7","action":"create_agent","status":"success","timestamp":1772466239959,"iso":"2026-03-02T15:43:59.959Z"}
+{"userId":"wallet:7yySoYz7q6Qir8oeznFCpqMrtxRSsiuvUHTEwamMetDU","agentId":"Trading Agent","action":"swap","status":"denied","reason":"Action \"swap\" is not in your allowed actions [transfer, scan_airdrops, scam_check, recover]. Your role is \"trader\".","timestamp":1772466313276,"iso":"2026-03-02T15:45:13.276Z"}
+{"userId":"alice","agentId":"WatchBot","action":"create_agent","status":"success","timestamp":1772571244298,"iso":"2026-03-03T20:54:04.298Z"}
+{"userId":"alice","agentId":"RecoverBot","action":"create_agent","status":"success","timestamp":1772571244415,"iso":"2026-03-03T20:54:04.415Z"}
