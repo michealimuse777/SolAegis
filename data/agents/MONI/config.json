@@ -1,0 +1,12 @@
+{
+  "role": "monitor",
+  "maxSolPerTx": 0,
+  "dailyTxLimit": 0,
+  "allowedActions": [
+    "scan_airdrops",
+    "scam_check"
+  ],
+  "allowedPrograms": [],
+  "riskProfile": "low",
+  "createdAt": 1772572081552
+}

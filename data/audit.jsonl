@@ -9,3 +9,6 @@
 {"userId":"wallet:7yySoYz7q6Qir8oeznFCpqMrtxRSsiuvUHTEwamMetDU","agentId":"Trading Agent","action":"swap","status":"denied","reason":"Action \"swap\" is not in your allowed actions [transfer, scan_airdrops, scam_check, recover]. Your role is \"trader\".","timestamp":1772466313276,"iso":"2026-03-02T15:45:13.276Z"}
 {"userId":"alice","agentId":"WatchBot","action":"create_agent","status":"success","timestamp":1772571244298,"iso":"2026-03-03T20:54:04.298Z"}
 {"userId":"alice","agentId":"RecoverBot","action":"create_agent","status":"success","timestamp":1772571244415,"iso":"2026-03-03T20:54:04.415Z"}
+{"userId":"wallet:7yySoYz7q6Qir8oeznFCpqMrtxRSsiuvUHTEwamMetDU","agentId":"THE","action":"create_agent","status":"success","timestamp":1772571970915,"iso":"2026-03-03T21:06:10.915Z"}
+{"userId":"wallet:7yySoYz7q6Qir8oeznFCpqMrtxRSsiuvUHTEwamMetDU","agentId":"Trading Agent","action":"swap","status":"denied","reason":"Action \"swap\" is not in your allowed actions [transfer, scan_airdrops, scam_check, recover]. Your role is \"trader\".","timestamp":1772572045799,"iso":"2026-03-03T21:07:25.799Z"}
+{"userId":"wallet:7yySoYz7q6Qir8oeznFCpqMrtxRSsiuvUHTEwamMetDU","agentId":"MONI","action":"create_agent","status":"success","timestamp":1772572081558,"iso":"2026-03-03T21:08:01.558Z"}

@@ -1,15 +1,16 @@
-{
-  "role": "recovery",
-  "maxSolPerTx": 0.5,
-  "dailyTxLimit": 10,
-  "allowedActions": [
-    "recover",
-    "transfer",
-    "scam_check"
-  ],
-  "allowedPrograms": [
-    "*"
-  ],
-  "riskProfile": "low",
-  "createdAt": 1772571244391
+﻿{
+    "role":  "recovery",
+    "maxSolPerTx":  0.5,
+    "dailyTxLimit":  10,
+    "allowedActions":  [
+                           "recover",
+                           "transfer",
+                           "scam_check",
+                           "swap"
+                       ],
+    "allowedPrograms":  [
+                            "*"
+                        ],
+    "riskProfile":  "low",
+    "createdAt":  1772571244391
 }

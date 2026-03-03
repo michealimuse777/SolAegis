@@ -1,16 +1,17 @@
-{
-  "role": "custom",
-  "maxSolPerTx": 1,
-  "dailyTxLimit": 5,
-  "allowedActions": [
-    "transfer",
-    "recover",
-    "scan_airdrops",
-    "scam_check"
-  ],
-  "allowedPrograms": [
-    "*"
-  ],
-  "riskProfile": "medium",
-  "createdAt": 1772466239940
+﻿{
+    "role":  "custom",
+    "maxSolPerTx":  1,
+    "dailyTxLimit":  5,
+    "allowedActions":  [
+                           "transfer",
+                           "recover",
+                           "scan_airdrops",
+                           "scam_check",
+                           "swap"
+                       ],
+    "allowedPrograms":  [
+                            "*"
+                        ],
+    "riskProfile":  "medium",
+    "createdAt":  1772466239940
 }
