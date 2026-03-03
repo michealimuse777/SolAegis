@@ -363,6 +363,37 @@ app.post("/api/agents/:id/chat", chatRateLimiter as any, async (req: Authenticat
                             }
                         }
                     }
+                    // Handle swap via Orca Whirlpools
+                    else if (action === "swap") {
+                        const { swapTokens } = await import("./skills/swap.js");
+                        const keypair = agent.getKeypair();
+                        const inputMint = params.inputMint || params.from || params.tokenIn || "SOL";
+                        const outputMint = params.outputMint || params.to || params.tokenOut || "devUSDC";
+                        const amount = parseFloat(params.amount || "0.01");
+                        const slippageBps = parseInt(params.slippage || "100");
+
+                        if (!amount || amount <= 0) {
+                            executedReplies.push("⚠️ Please specify an amount to swap. Example: \"swap 0.1 SOL to devUSDC\"");
+                        } else {
+                            const result = await swapTokens({
+                                connection,
+                                payer: keypair,
+                                inputMint,
+                                outputMint,
+                                amount,
+                                slippageBps,
+                            });
+                            executedReplies.push(
+                                `✅ **Swap Executed**\n\n` +
+                                `• Input: ${amount} ${inputMint}\n` +
+                                `• Output: ~${result.estimatedOutput} ${outputMint}\n` +
+                                `• Route: ${result.route}\n` +
+                                `• Pool: \`${result.pool}\`\n` +
+                                `• Tx: \`${result.signature}\``
+                            );
+                            response.executionResult = { success: true, action: "swap", ...result };
+                        }
+                    }
                     // Unknown action
                     else {
                         executedReplies.push(`⚠️ Action "${action}" recognized but execution not implemented yet.`);
