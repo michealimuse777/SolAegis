@@ -52,7 +52,29 @@ const INTERVAL_MAP: Record<string, string> = {
 
 export function intervalToCron(interval: string): string | null {
     const key = interval.toLowerCase().trim();
-    return INTERVAL_MAP[key] || null;
+
+    // Check exact map first
+    if (INTERVAL_MAP[key]) return INTERVAL_MAP[key];
+
+    // Dynamic parsing: "5 hours", "3 hours", "45 minutes", "2 days"
+    const match = key.match(/^(?:every\s+)?(\d+)\s*(m|min|mins|minutes?|h|hr|hrs|hours?|d|days?)$/);
+    if (match) {
+        const n = parseInt(match[1]);
+        const unit = match[2].charAt(0); // m, h, or d
+
+        if (unit === "m" && n >= 1 && n <= 59) {
+            return `*/${n} * * * *`;
+        }
+        if (unit === "h" && n >= 1 && n <= 24) {
+            if (n === 1) return "0 * * * *";
+            return `0 */${n} * * *`;
+        }
+        if (unit === "d" && n >= 1 && n <= 7) {
+            return `0 0 */${n} * *`;
+        }
+    }
+
+    return null;
 }
 
 // ─────────── Safe Delay → Milliseconds ───────────
@@ -207,6 +229,73 @@ export class ChatHandler {
     }
 
     /**
+     * Parse a single command string into one intent.
+     * Used by parseIntents for both single and multi-command messages.
+     */
+    private parseSingleCommand(msg: string): ChatIntent | null {
+        // Stop / Cancel / Unschedule
+        const stopMatch = msg.match(/^(?:stop|cancel|unschedule|remove|disable)\s+(.+)/i);
+        if (stopMatch) {
+            const target = stopMatch[1].toLowerCase();
+            let action = "all";
+            if (target.match(/scam|safety|rug/)) action = "scam_check";
+            if (target.match(/airdrop/)) action = "scan_airdrops";
+            if (target.match(/recover|rent|clean/)) action = "recover";
+            if (target.match(/transfer|send/)) action = "transfer";
+            if (target.match(/swap|trade/)) action = "swap";
+            return { type: "unschedule", action };
+        }
+
+        // Schedule: "X every Y"
+        const schedMatch = msg.match(/(.+?)\s+every\s+(.+)/i);
+        if (schedMatch) {
+            const ap = schedMatch[1].toLowerCase();
+            let action = "scam_check";
+            if (ap.match(/airdrop/)) action = "scan_airdrops";
+            if (ap.match(/recover|rent/)) action = "recover";
+            if (ap.match(/transfer|send/)) action = "transfer";
+            if (ap.match(/swap/)) action = "swap";
+            if (ap.match(/scan/) && !ap.match(/airdrop/)) action = "scam_check";
+            return { type: "schedule", action, interval: schedMatch[2].trim() };
+        }
+
+        // Swap
+        const swapMatch = msg.match(/(?:swap|trade|exchange)\s+([\d.]+)\s+(\w+)\s+(?:to|for|into)\s+(\w+)/i);
+        if (swapMatch) {
+            return { type: "execute_action", action: "swap", params: { amount: swapMatch[1], from: swapMatch[2].toUpperCase(), to: swapMatch[3] } };
+        }
+
+        // Transfer
+        const transferMatch = msg.match(/(?:send|transfer|pay)\s+([\d.]+)\s+(\w+)\s+to\s+([A-Za-z0-9]{20,})/i);
+        if (transferMatch) {
+            return { type: "execute_action", action: "transfer", params: { amount: transferMatch[1], token: transferMatch[2].toUpperCase(), to: transferMatch[3] } };
+        }
+
+        // Balance
+        if (msg.match(/\b(balance|how much|portfolio)\b/)) return { type: "query_balance" };
+
+        // Status
+        if (msg.match(/\b(status|info)\b/) && !msg.match(/balance/)) return { type: "query_status" };
+
+        // Airdrop
+        if (msg.match(/\b(airdrop|fund me|give me sol|get sol)\b/)) return { type: "execute_action", action: "airdrop", params: {} };
+
+        // Scan airdrops
+        if (msg.match(/\b(scan airdrop|check airdrop)/)) return { type: "execute_action", action: "scan_airdrops", params: {} };
+
+        // Scam check
+        if (msg.match(/\b(scam|rug|safety|check token)/)) return { type: "execute_action", action: "scam_check", params: {} };
+
+        // Recover
+        if (msg.match(/\b(recover|reclaim|close empty|clean up)/)) return { type: "execute_action", action: "recover", params: {} };
+
+        // Explain / help
+        if (msg.match(/\b(what can you|capabilities|help me|what do you)\b/)) return { type: "explain" };
+
+        return null;
+    }
+
+    /**
      * Parse user message into one or more structured intents using LLM.
      * Supports synonyms like "recover lost SOL", "scan for risks", "check safety".
      */
@@ -217,6 +306,32 @@ export class ChatHandler {
         skills: string,
         history: { role: string; content: string }[],
     ): Promise<ChatIntent[]> {
+        // ═══════════════════════════════════════════
+        // DETERMINISTIC PRE-PARSER (works without LLM)
+        // ═══════════════════════════════════════════
+        const msg = message.toLowerCase().trim();
+
+        // ──── MULTI-COMMAND SPLITTER ────
+        // "scan scams and check balance", "check balance, then scan airdrops"
+        if (msg.match(/\b(and|,\s*|then\s+|also\s+)/)) {
+            const parts = msg.split(/\s*(?:\band\b|,|\bthen\b|\balso\b)\s*/i).filter(p => p.trim());
+            if (parts.length > 1) {
+                const allIntents: ChatIntent[] = [];
+                for (const part of parts) {
+                    const intent = this.parseSingleCommand(part.trim());
+                    if (intent) allIntents.push(intent);
+                }
+                if (allIntents.length > 0) return allIntents;
+            }
+        }
+
+        // Single command
+        const single = this.parseSingleCommand(msg);
+        if (single) return [single];
+
+        // ═══════════════════════════════════════════
+        // LLM PARSER (for ambiguous messages only)
+        // ═══════════════════════════════════════════
         const prompt = `You are an intent parser for a Solana wallet agent named "${agentId}".
 The agent has these capabilities: ${config.allowedActions.join(", ")}
 Role: ${config.role} | Max SOL/tx: ${config.maxSolPerTx} | Daily limit: ${config.dailyTxLimit}
@@ -359,9 +474,36 @@ User message: "${message}"`;
         intent: ChatIntent,
         currentConfig: AgentConfig,
     ): Promise<ChatResponse> {
-        const updates = intent.configUpdates;
-        if (!updates || Object.keys(updates).length === 0) {
+        const raw = intent.configUpdates;
+        if (!raw || Object.keys(raw).length === 0) {
             return { reply: "I couldn't determine what config changes you want. Try something like:\n- \"Switch to low risk mode\"\n- \"Set daily limit to 5\"\n- \"Only allow transfers\"" };
+        }
+
+        // Normalize LLM key names → internal config keys
+        const keyMap: Record<string, string> = {
+            dailylimit: "dailyTxLimit",
+            daily_limit: "dailyTxLimit",
+            dailytxlimit: "dailyTxLimit",
+            dailycap: "dailyTxLimit",
+            daily_cap: "dailyTxLimit",
+            maxsol: "maxSolPerTx",
+            max_sol: "maxSolPerTx",
+            maxsolpertx: "maxSolPerTx",
+            max_sol_per_tx: "maxSolPerTx",
+            risk: "riskProfile",
+            riskprofile: "riskProfile",
+            risk_profile: "riskProfile",
+            riskmode: "riskProfile",
+            role: "role",
+            allowedactions: "allowedActions",
+            allowed_actions: "allowedActions",
+            actions: "allowedActions",
+        };
+
+        const updates: any = {};
+        for (const [k, v] of Object.entries(raw)) {
+            const normalized = keyMap[k.toLowerCase()] || k;
+            updates[normalized] = v;
         }
 
         // Validate risk profile

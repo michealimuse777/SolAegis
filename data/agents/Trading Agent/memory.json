@@ -1,0 +1,103 @@
+{
+  "preferences": {},
+  "notes": [
+    "User prefers direct answers.",
+    "User doesn't like risky trades",
+    "User likes day trading"
+  ],
+  "successfulActions": [
+    {
+      "action": "swap",
+      "timestamp": 1772652011510,
+      "detail": "✅ **Swap Executed**\n\n• Input: 0.001 SOL\n• Output: ~0.012872 devUSDC\n• Route: Orc"
+    },
+    {
+      "action": "scam_check",
+      "timestamp": 1772652876370,
+      "detail": "🔍 **Scam Scan** — 1 token(s) found:\n\n⚠️ **4zMMC9sr...** — Risk: 85/100 (Freeze "
+    },
+    {
+      "action": "scam_check",
+      "timestamp": 1772652966478,
+      "detail": "🔍 **Scam Scan** — 1 token(s) found:\n\n⚠️ **4zMMC9sr...** — Risk: 85/100 (Freeze "
+    },
+    {
+      "action": "scan_airdrops",
+      "timestamp": 1772653050958,
+      "detail": "📊 Scan complete. Found **1** token(s):\n• 4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZ"
+    },
+    {
+      "action": "recover",
+      "timestamp": 1772654962389,
+      "detail": "ℹ️ No empty token accounts found. Nothing to recover."
+    },
+    {
+      "action": "swap",
+      "timestamp": 1772665944959,
+      "detail": "✅ **Swap Executed**\n\n• Input: 0.0001 SOL\n• Output: ~0.001286 devusdc\n• Route: Or"
+    },
+    {
+      "action": "swap",
+      "timestamp": 1772666023637,
+      "detail": "✅ **Swap Executed**\n\n• Input: 0.0001 SOL\n• Output: ~0.001285 devUSDC\n• Route: Or"
+    },
+    {
+      "action": "scam_check",
+      "timestamp": 1772666718826,
+      "detail": "🔍 **Scam Scan** — 1 token(s) found:\n\n⚠️ **4zMMC9sr...** — Risk: 85/100 (Freeze "
+    },
+    {
+      "action": "scam_check",
+      "timestamp": 1772666822038,
+      "detail": "🔍 **Scam Scan** — 1 token(s) found:\n\n⚠️ **4zMMC9sr...** — Risk: 85/100 (Freeze "
+    },
+    {
+      "action": "scam_check",
+      "timestamp": 1772667667116,
+      "detail": "🔍 **Scam Scan** — 1 token(s) found:\n\n⚠️ **4zMMC9sr...** — Risk: 85/100 (Freeze "
+    },
+    {
+      "action": "recover",
+      "timestamp": 1772668207969,
+      "detail": "ℹ️ No empty token accounts found. Nothing to recover."
+    },
+    {
+      "action": "scan_airdrops",
+      "timestamp": 1772668208248,
+      "detail": "📊 Scan complete. Found **1** token(s):\n• 4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZ"
+    }
+  ],
+  "lastFailures": [
+    {
+      "action": "swap",
+      "timestamp": 1772572756678,
+      "detail": "failed to get info about account 6XqJUqX4zUL7KEm9wGqTvJmE7DdC8e6MYeMBF9uYLckX: TypeError: fetch failed"
+    },
+    {
+      "action": "transfer",
+      "timestamp": 1772652187026,
+      "detail": "Simulation failed. \nMessage: Transaction simulation failed: Transaction results in an account (1) with insufficient funds for rent. \nLogs: \n[\n  \"Program 11111111111111111111111111111111 invoke [1]\",\n  \"Program 11111111111111111111111111111111 success\"\n]. \nCatch the `SendTransactionError` and call `getLogs()` on it for full details."
+    },
+    {
+      "action": "transfer",
+      "timestamp": 1772652409519,
+      "detail": "Simulation failed. \nMessage: Transaction simulation failed: Transaction results in an account (1) with insufficient funds for rent. \nLogs: \n[\n  \"Program 11111111111111111111111111111111 invoke [1]\",\n  \"Program 11111111111111111111111111111111 success\"\n]. \nCatch the `SendTransactionError` and call `getLogs()` on it for full details."
+    },
+    {
+      "action": "airdrop",
+      "timestamp": 1772665620280,
+      "detail": "airdrop to 2nm5UBWnGgm9r3dtAttsHuLaw7wnNYdBbzqXtAVEASds failed: Internal error"
+    },
+    {
+      "action": "swap",
+      "timestamp": 1772665720478,
+      "detail": "Orca swap failed for SOL → DEVUSDT: . Available devnet tokens: SOL, devUSDC, devUSDT, devSAMO, devTMAC."
+    },
+    {
+      "action": "swap",
+      "timestamp": 1772665819848,
+      "detail": "Orca swap failed for SOL → devUSDT: . Available devnet tokens: SOL, devUSDC, devUSDT, devSAMO, devTMAC."
+    }
+  ],
+  "lastUpdated": 1772668208248
+}

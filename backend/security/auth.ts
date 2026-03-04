@@ -330,6 +330,24 @@ export function getUserAgents(userId: string): string[] {
     return users.get(userId)?.agents || [];
 }
 
+export function removeAgentFromUser(userId: string, agentId: string): void {
+    const record = users.get(userId);
+    if (record) {
+        record.agents = record.agents.filter(id => id !== agentId);
+        saveUsers();
+    }
+}
+
+export function removeAgentFromAllUsers(agentId: string): void {
+    for (const [, record] of users) {
+        const idx = record.agents.indexOf(agentId);
+        if (idx !== -1) {
+            record.agents.splice(idx, 1);
+        }
+    }
+    saveUsers();
+}
+
 // ─────────── Express Middleware ───────────
 
 export interface AuthenticatedRequest extends Request {

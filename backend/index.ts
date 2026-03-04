@@ -1,6 +1,9 @@
 import dotenv from "dotenv";
 dotenv.config();
 
+import * as fs from "fs";
+import * as path from "path";
+
 import express from "express";
 import cors from "cors";
 import { WebSocketServer, WebSocket } from "ws";
@@ -25,10 +28,12 @@ import {
 import { DecisionMemory } from "./services/decisionMemory.js";
 import { PositionTracker } from "./services/positionTracker.js";
 import { ChatHandler, intervalToCron, delayToMs } from "./core/chatHandler.js";
+import { loadMemory, saveMemory, defaultMemory } from "./core/memory.js";
+import { getMarketData } from "./services/marketData.js";
 import { PolicyEngine } from "./services/policyEngine.js";
 import { loadAgentConfig, updateAgentConfig, AgentRole } from "./core/agentConfig.js";
 import { recordSuccess, recordFailure } from "./core/memory.js";
-import { authMiddleware, registerUser, loginUser, requestWalletNonce, verifyWalletSignature, assignAgentToUser, getUserAgents, agentOwnershipMiddleware, AuthenticatedRequest } from "./security/auth.js";
+import { authMiddleware, registerUser, loginUser, requestWalletNonce, verifyWalletSignature, assignAgentToUser, getUserAgents, removeAgentFromAllUsers, agentOwnershipMiddleware, AuthenticatedRequest } from "./security/auth.js";
 import { chatRateLimiter, txRateLimiter } from "./security/rateLimiter.js";
 import { validateAgentCreate } from "./security/configValidator.js";
 import { auditLog, getAuditLog } from "./security/auditLog.js";
@@ -504,6 +509,47 @@ app.post("/api/agents/:id/chat", chatRateLimiter as any, async (req: Authenticat
                     }
                 }
             }
+
+            // Handle query_balance — fetch real SOL + SPL token balances
+            if (intent.type === "query_balance") {
+                try {
+                    const keypair = agent.getKeypair();
+                    const solBal = await connection.getBalance(keypair.publicKey) / 1e9;
+                    const { TOKEN_PROGRAM_ID } = await import("@solana/spl-token");
+                    const tokenAccounts = await connection.getParsedTokenAccountsByOwner(
+                        keypair.publicKey,
+                        { programId: TOKEN_PROGRAM_ID },
+                    );
+
+                    let balanceText = `💰 Wallet Balance\n\nSOL: ${solBal.toFixed(4)} SOL`;
+
+                    if (tokenAccounts.value.length > 0) {
+                        balanceText += `\n\nSPL Tokens:`;
+                        for (const ta of tokenAccounts.value) {
+                            const info = ta.account.data.parsed?.info;
+                            const mint = info?.mint?.slice(0, 8) + "..." || "Unknown";
+                            const amount = info?.tokenAmount?.uiAmountString || "0";
+                            const decimals = info?.tokenAmount?.decimals || 0;
+                            if (parseFloat(amount) > 0 || decimals > 0) {
+                                balanceText += `\n• ${mint}: ${amount}`;
+                            }
+                        }
+                        if (tokenAccounts.value.every((ta: any) => {
+                            const amt = ta.account.data.parsed?.info?.tokenAmount?.uiAmountString;
+                            return !amt || parseFloat(amt) === 0;
+                        })) {
+                            balanceText += `\n• No tokens with balance found`;
+                        }
+                    } else {
+                        balanceText += `\n\nNo SPL token accounts found.`;
+                    }
+
+                    balanceText += `\n\nAddress: ${keypair.publicKey.toBase58()}`;
+                    executedReplies.push(balanceText);
+                } catch (err: any) {
+                    executedReplies.push(`❌ Could not fetch balance: ${err.message}`);
+                }
+            }
         }
 
         // If we executed actions, use those results as the reply
@@ -535,10 +581,26 @@ app.patch("/api/agents/:id/config", (req, res) => {
     }
 });
 
-app.delete("/api/agents/:id", (req, res) => {
-    const removed = agentManager.remove(req.params.id);
+app.delete("/api/agents/:id", (req: AuthenticatedRequest, res) => {
+    const agentId = req.params.id;
+    const removed = agentManager.remove(agentId);
     if (removed) {
-        broadcast("agent:removed", { id: req.params.id });
+        // Remove from user ownership
+        removeAgentFromAllUsers(agentId);
+
+        // Remove from disk
+        const agentDir = path.join(process.cwd(), "data", "agents", agentId);
+        try {
+            if (fs.existsSync(agentDir)) {
+                fs.rmSync(agentDir, { recursive: true, force: true });
+                console.log(`[Delete] Removed agent directory: ${agentDir}`);
+            }
+        } catch (e: any) {
+            console.warn(`[Delete] Failed to remove agent dir: ${e.message}`);
+        }
+
+        auditLog({ userId: req.userId, agentId, action: "delete_agent", status: "success" });
+        broadcast("agent:removed", { id: agentId });
         res.json({ removed: true });
     } else {
         res.status(404).json({ error: "Agent not found" });
@@ -906,6 +968,50 @@ app.get("/api/scheduler/jobs", async (_req, res) => {
     res.json(jobs);
 });
 
+// ─── Agent-specific schedules ───
+app.get("/api/agents/:id/schedules", async (req, res) => {
+    try {
+        const allJobs = await listScheduledJobs();
+        const agentId = req.params.id;
+        const filtered = allJobs.filter((j: any) =>
+            j.name?.includes(agentId) || j.key?.includes(agentId) || j.data?.agentId === agentId
+        );
+        res.json(filtered);
+    } catch (err: any) {
+        res.json([]);
+    }
+});
+
+// ─── Agent action history ───
+app.get("/api/agents/:id/history", (req, res) => {
+    try {
+        const agentId = req.params.id;
+        // Combine audit log + memory actions
+        const audit = getAuditLog().filter((e: any) => e.agentId === agentId).slice(-20);
+        const mem = loadMemory(agentId);
+        const actions = [
+            ...(mem.successfulActions || []).map((a: any) => ({
+                type: "success", action: typeof a === "string" ? a : a.action,
+                detail: typeof a === "string" ? a : a.detail, timestamp: a.timestamp || 0,
+            })),
+            ...(mem.lastFailures || []).map((f: any) => ({
+                type: "failure", action: typeof f === "string" ? f : f.action,
+                detail: typeof f === "string" ? f : f.detail, timestamp: f.timestamp || 0,
+            })),
+            ...audit.map((e: any) => ({
+                type: e.status || "info", action: e.action,
+                detail: e.txSignature ? `Tx: ${e.txSignature.slice(0, 12)}...` : e.reason || "completed",
+                timestamp: e.timestamp || 0,
+            })),
+        ];
+        // Sort by timestamp desc, limit to 20
+        actions.sort((a: any, b: any) => (b.timestamp || 0) - (a.timestamp || 0));
+        res.json(actions.slice(0, 20));
+    } catch {
+        res.json([]);
+    }
+});
+
 app.post("/api/scheduler/schedule", schedulerGuardrailMiddleware as any, async (req: AuthenticatedRequest, res) => {
     try {
         const { agentId, action, params, cron } = req.body;
@@ -1140,6 +1246,27 @@ async function start() {
             }
         });
     }
+
+    // ─── Memory API ───
+    app.get("/api/agents/:id/memory", (req, res) => {
+        const mem = loadMemory(req.params.id);
+        res.json(mem);
+    });
+
+    app.delete("/api/agents/:id/memory", (req, res) => {
+        saveMemory(req.params.id, defaultMemory());
+        res.json({ success: true, message: "Memory wiped" });
+    });
+
+    // ─── SOL Price API ───
+    app.get("/api/price/sol", async (_req, res) => {
+        try {
+            const data = await getMarketData();
+            res.json(data);
+        } catch (err: any) {
+            res.status(500).json({ error: err.message });
+        }
+    });
 
     // ─── Audit Log ───
     app.get("/api/agents/:id/audit", (req, res) => {

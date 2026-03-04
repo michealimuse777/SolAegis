@@ -245,7 +245,7 @@ export function updateAgentConfig(
     }
 
     // Only allow actions that exist in the system
-    const VALID_ACTIONS = ["transfer", "recover", "scan_airdrops", "scam_check"];
+    const VALID_ACTIONS = ["transfer", "recover", "scan_airdrops", "scam_check", "swap", "airdrop"];
     if (updates.allowedActions) {
         updates.allowedActions = updates.allowedActions.filter(a => VALID_ACTIONS.includes(a));
     }

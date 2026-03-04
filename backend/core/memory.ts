@@ -27,7 +27,7 @@ function memoryPath(agentId: string): string {
 
 // ─────────── Default Memory ───────────
 
-function defaultMemory(): AgentMemory {
+export function defaultMemory(): AgentMemory {
     return {
         preferences: {},
         notes: [],
