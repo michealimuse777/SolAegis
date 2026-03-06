@@ -1185,7 +1185,7 @@ async function start() {
     console.log(`[Server] Scheduler → ${redisConnected ? "Redis/BullMQ ✅" : "In-process fallback ⚠️ (Redis unavailable)"}`);
 
     // Register the job processor — works with both Redis (BullMQ) and in-process fallback
-    createWorker(async (data) => {
+    await createWorker(async (data) => {
         const agent = agentManager.get(data.agentId);
         if (!agent) {
             console.warn(`[Worker] Agent ${data.agentId} not found, skipping job`);

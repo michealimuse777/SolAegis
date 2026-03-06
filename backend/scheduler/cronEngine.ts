@@ -1,6 +1,7 @@
 import { Queue, Worker } from "bullmq";
 
 let redisConnection: any = null;
+let _redisUrl: string = "";
 let agentQueue: Queue | null = null;
 
 export interface CronJobData {
@@ -68,21 +69,22 @@ function cronToMs(cron: string): number {
 export async function initScheduler(
     redisUrl: string = "redis://localhost:6379"
 ): Promise<boolean> {
+    _redisUrl = redisUrl; // Store for Worker connection
     try {
         const ioredisModule: any = await import("ioredis");
         const RedisClient = ioredisModule.Redis || ioredisModule.default;
         redisConnection = new RedisClient(redisUrl, {
             maxRetriesPerRequest: null,
             lazyConnect: true,
-            retryStrategy: () => null,  // Do not retry — fail fast
-            connectTimeout: 3000,
+            retryStrategy: (times: number) => (times > 3 ? null : Math.min(times * 500, 3000)),
+            connectTimeout: 5000,
         });
 
         // Suppress unhandled error events (we handle via try/catch)
         redisConnection.on("error", () => { });
 
         await redisConnection.connect();
-        console.log("[CronEngine] Redis connected");
+        console.log("[CronEngine] Redis connected for Queue");
 
         agentQueue = new Queue("solaegis-agent-jobs", {
             connection: redisConnection,
@@ -239,57 +241,83 @@ export async function scheduleDelayedJob(
  * Create a worker that processes scheduled jobs with retry and timeout.
  * Also stores the processor for in-process fallback use.
  */
-export function createWorker(
+export async function createWorker(
     processor: (data: CronJobData) => Promise<void>
-): Worker | null {
+): Promise<Worker | null> {
     // Always store the processor for in-process fallback
     _processor = processor;
 
-    if (!redisConnection) {
+    if (!redisConnection || !_redisUrl) {
         console.log("[CronEngine] In-process mode — processor registered for fallback scheduler");
         return null;
     }
 
-    const worker = new Worker(
-        "solaegis-agent-jobs",
-        async (job) => {
-            const startTime = Date.now();
-            console.log(`[CronEngine] Processing job ${job.name} for agent ${job.data.agentId} (attempt ${job.attemptsMade + 1})`);
+    // BullMQ Workers MUST have their own dedicated Redis connection
+    // (they use blocking commands like BRPOPLPUSH that conflict with the Queue connection)
+    try {
+        const ioredisModule: any = await import("ioredis");
+        const RedisClient = ioredisModule.Redis || ioredisModule.default;
+        const workerConnection = new RedisClient(_redisUrl, {
+            maxRetriesPerRequest: null,
+            lazyConnect: true,
+            retryStrategy: (times: number) => (times > 5 ? null : Math.min(times * 500, 5000)),
+            connectTimeout: 5000,
+        });
+        workerConnection.on("error", (err: any) => {
+            console.warn(`[CronEngine:Worker] Redis error: ${err.message}`);
+        });
+        await workerConnection.connect();
+        console.log("[CronEngine] Redis connected for Worker (separate connection)");
 
-            // Wrap in a timeout
-            const timeout = new Promise<never>((_, reject) =>
-                setTimeout(() => reject(new Error("Job timed out after 30s")), 30_000)
-            );
+        const worker = new Worker(
+            "solaegis-agent-jobs",
+            async (job) => {
+                const startTime = Date.now();
+                console.log(`[CronEngine] Processing job ${job.name} for agent ${job.data.agentId} (attempt ${job.attemptsMade + 1})`);
 
-            try {
-                await Promise.race([
-                    processor(job.data as CronJobData),
-                    timeout,
-                ]);
-                const elapsed = Date.now() - startTime;
-                console.log(`[CronEngine] Job ${job.name} completed in ${elapsed}ms`);
-            } catch (err: any) {
-                const elapsed = Date.now() - startTime;
-                console.error(`[CronEngine] Job ${job.name} failed after ${elapsed}ms: ${err.message}`);
-                throw err; // BullMQ will retry based on config
+                // Wrap in a timeout
+                const timeout = new Promise<never>((_, reject) =>
+                    setTimeout(() => reject(new Error("Job timed out after 30s")), 30_000)
+                );
+
+                try {
+                    await Promise.race([
+                        processor(job.data as CronJobData),
+                        timeout,
+                    ]);
+                    const elapsed = Date.now() - startTime;
+                    console.log(`[CronEngine] Job ${job.name} completed in ${elapsed}ms`);
+                } catch (err: any) {
+                    const elapsed = Date.now() - startTime;
+                    console.error(`[CronEngine] Job ${job.name} failed after ${elapsed}ms: ${err.message}`);
+                    throw err; // BullMQ will retry based on config
+                }
+            },
+            {
+                connection: workerConnection,
+                concurrency: 3,
+                limiter: { max: 5, duration: 60_000 }, // Max 5 jobs per minute
             }
-        },
-        {
-            connection: redisConnection,
-            concurrency: 3,
-            limiter: { max: 5, duration: 60_000 }, // Max 5 jobs per minute
-        }
-    );
+        );
 
-    worker.on("completed", (job) => {
-        console.log(`[CronEngine] ✅ Job ${job.id} completed`);
-    });
+        worker.on("completed", (job) => {
+            console.log(`[CronEngine] ✅ Job ${job.id} completed`);
+        });
 
-    worker.on("failed", (job, err) => {
-        console.error(`[CronEngine] ❌ Job ${job?.id ?? "unknown"} failed (attempt ${job?.attemptsMade ?? "?"}): ${err.message}`);
-    });
+        worker.on("failed", (job, err) => {
+            console.error(`[CronEngine] ❌ Job ${job?.id ?? "unknown"} failed (attempt ${job?.attemptsMade ?? "?"}): ${err.message}`);
+        });
 
-    return worker;
+        worker.on("error", (err) => {
+            console.error(`[CronEngine] Worker error: ${err.message}`);
+        });
+
+        return worker;
+    } catch (err: any) {
+        console.error(`[CronEngine] Failed to create Worker connection: ${err.message}`);
+        console.log("[CronEngine] Falling back to in-process scheduler for job execution");
+        return null;
+    }
 }
 
 /**
