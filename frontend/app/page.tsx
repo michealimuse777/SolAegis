@@ -168,14 +168,38 @@ export default function Home() {
 
   // ─── Wallet Connect ───
   const connectWallet = async () => {
-    const solana = (window as any).solana;
-    if (!solana?.isPhantom) {
-      alert("Phantom wallet not found. Please install it.");
+    // Detect available Solana wallets
+    const win = window as any;
+    const wallets: { name: string; provider: any }[] = [];
+
+    if (win.phantom?.solana) wallets.push({ name: "Phantom", provider: win.phantom.solana });
+    else if (win.solana?.isPhantom) wallets.push({ name: "Phantom", provider: win.solana });
+
+    if (win.solflare?.isSolflare) wallets.push({ name: "Solflare", provider: win.solflare });
+    if (win.backpack?.isBackpack) wallets.push({ name: "Backpack", provider: win.backpack });
+    // Generic fallback: any wallet injecting window.solana (Slope, Coin98, etc.)
+    if (win.solana && !win.solana.isPhantom && wallets.length === 0) {
+      wallets.push({ name: "Solana Wallet", provider: win.solana });
+    }
+
+    if (wallets.length === 0) {
+      alert("No Solana wallet found. Please install Phantom, Solflare, or Backpack.");
       return;
     }
+
+    // If multiple wallets, let user pick; otherwise use the only one
+    let wallet = wallets[0];
+    if (wallets.length > 1) {
+      const choice = prompt(
+        `Multiple wallets detected. Enter number to connect:\n${wallets.map((w, i) => `${i + 1}. ${w.name}`).join("\n")}`
+      );
+      const idx = parseInt(choice || "1", 10) - 1;
+      if (idx >= 0 && idx < wallets.length) wallet = wallets[idx];
+    }
+
     setConnecting(true);
     try {
-      const resp = await solana.connect();
+      const resp = await wallet.provider.connect();
       const pubkey = resp.publicKey.toString();
 
       // 1. Request nonce
@@ -190,7 +214,7 @@ export default function Home() {
 
       // 2. Sign the nonce message
       const encoded = new TextEncoder().encode(nonceMessage);
-      const signResult = await solana.signMessage(encoded, "utf8");
+      const signResult = await wallet.provider.signMessage(encoded, "utf8");
       const sigBytes = signResult.signature;
 
       // Convert signature bytes to base58 string
@@ -239,7 +263,13 @@ export default function Home() {
   };
 
   const disconnect = () => {
-    try { (window as any).solana?.disconnect(); } catch { /* ok */ }
+    try {
+      const win = window as any;
+      win.phantom?.solana?.disconnect();
+      win.solflare?.disconnect();
+      win.backpack?.disconnect();
+      win.solana?.disconnect();
+    } catch { /* ok */ }
     setToken(null);
     setWalletAddress("");
     setAgents([]);
