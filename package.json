@@ -3,10 +3,14 @@
   "version": "1.0.0",
   "description": "Autonomous Multi-Agent DeFi Wallet Infrastructure on Solana Devnet",
   "main": "backend/index.ts",
+  "bin": {
+    "solaegis": "./bin.mjs"
+  },
   "scripts": {
     "dev": "npx tsx backend/index.ts",
     "start": "npx tsx backend/index.ts",
     "cli": "npx tsx cli/index.ts",
+    "cli:link": "npm link",
     "test": "npx tsx backend/test/harness.ts",
     "build": "tsc",
     "typecheck": "tsc --noEmit"
