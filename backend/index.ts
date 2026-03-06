@@ -31,7 +31,7 @@ import { ChatHandler, intervalToCron, delayToMs } from "./core/chatHandler.js";
 import { loadMemory, saveMemory, defaultMemory } from "./core/memory.js";
 import { getMarketData } from "./services/marketData.js";
 import { PolicyEngine } from "./services/policyEngine.js";
-import { loadAgentConfig, updateAgentConfig, AgentRole } from "./core/agentConfig.js";
+import { loadAgentConfig, updateAgentConfig, loadSkills, AgentRole } from "./core/agentConfig.js";
 import { recordSuccess, recordFailure } from "./core/memory.js";
 import { authMiddleware, registerUser, loginUser, requestWalletNonce, verifyWalletSignature, assignAgentToUser, getUserAgents, removeAgentFromAllUsers, agentOwnershipMiddleware, AuthenticatedRequest } from "./security/auth.js";
 import { chatRateLimiter, txRateLimiter } from "./security/rateLimiter.js";
@@ -1297,6 +1297,27 @@ async function start() {
     app.delete("/api/agents/:id/memory", (req, res) => {
         saveMemory(req.params.id, defaultMemory());
         res.json({ success: true, message: "Memory wiped" });
+    });
+
+    // ─── Agent Skills API ───
+    app.get("/api/agents/:id/skills", (req, res) => {
+        try {
+            const agentId = req.params.id;
+            const skills = loadSkills(agentId);
+            const lines = skills.split("\n").filter((l: string) => l.trim()).length;
+            const sections = skills.match(/^##?\s+.+$/gm) || [];
+            res.json({
+                agent: agentId,
+                skills: skills,
+                meta: {
+                    lines,
+                    sections: sections.map((s: string) => s.replace(/^#+\s+/, "")),
+                    loadedAt: new Date().toISOString(),
+                },
+            });
+        } catch (err: any) {
+            res.status(500).json({ error: "Failed to load agent skills", detail: err.message });
+        }
     });
 
     // ─── SOL Price API ───
