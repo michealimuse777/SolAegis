@@ -1340,13 +1340,15 @@ async function start() {
         res.json(entries);
     });
 
-    // Start Express
-    app.listen(PORT, () => {
-        console.log(`[Server] REST API → http://localhost:${PORT}`);
-    });
+    // Start HTTP + WebSocket on the same server (required for Railway/Render single-port)
+    const { createServer } = await import("http");
+    const server = createServer(app);
+    const wss = new WebSocketServer({ server });
 
-    // Start WebSocket with streaming chat support
-    const wss = new WebSocketServer({ port: WS_PORT });
+    server.listen(PORT, "0.0.0.0", () => {
+        console.log(`[Server] REST API → http://0.0.0.0:${PORT}`);
+        console.log(`[Server] WebSocket → ws://0.0.0.0:${PORT} (same port)`);
+    });
     wss.on("connection", (ws) => {
         wsClients.add(ws);
         console.log("[WS] Client connected");

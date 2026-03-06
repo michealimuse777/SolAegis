@@ -334,7 +334,7 @@ export default function Home() {
   const streamTextRef = useRef("");
 
   useEffect(() => {
-    const wsUrl = process.env.NEXT_PUBLIC_WS_URL || API.replace("https://", "wss://").replace("http://", "ws://").replace(":4000", ":4001");
+    const wsUrl = process.env.NEXT_PUBLIC_WS_URL || API.replace("https://", "wss://").replace("http://", "ws://");
     let ws: WebSocket;
     let reconnectTimer: ReturnType<typeof setTimeout>;
 
