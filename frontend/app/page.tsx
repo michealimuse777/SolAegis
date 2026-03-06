@@ -405,6 +405,41 @@ export default function Home() {
             streamResolverRef.current({ error: msg.error });
             streamResolverRef.current = null;
           }
+
+          // ─── Cron job execution notifications ───
+          if (msg.type === "cron:executed" && msg.agentId) {
+            const result = msg.result || {};
+            const action = msg.action || result.action || msg.name || "scheduled task";
+            const detail = result.success !== false
+              ? `✅ Scheduled job completed: ${action}`
+              : `⚠️ Scheduled job finished with issues: ${action}`;
+            setAgentBlocks(prev => {
+              const blocks = [...(prev[msg.agentId] || [])];
+              blocks.push({
+                id: `cron-${Date.now()}`,
+                type: "system" as const,
+                label: "SCHEDULED TASK",
+                content: detail,
+                timestamp: Date.now(),
+                badge: "cron",
+              });
+              return { ...prev, [msg.agentId]: blocks };
+            });
+          }
+
+          if (msg.type === "cron:failed" && msg.agentId) {
+            setAgentBlocks(prev => {
+              const blocks = [...(prev[msg.agentId] || [])];
+              blocks.push({
+                id: `cron-err-${Date.now()}`,
+                type: "error" as const,
+                label: "SCHEDULED TASK FAILED",
+                content: `❌ ${msg.action || "task"} failed: ${msg.error || "unknown error"}`,
+                timestamp: Date.now(),
+              });
+              return { ...prev, [msg.agentId]: blocks };
+            });
+          }
         } catch { }
       };
     };
