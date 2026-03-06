@@ -141,7 +141,7 @@ export default function MobileChatView({
                         onKeyDown={e => e.key === "Enter" && handleSend()}
                         placeholder={PLACEHOLDERS[placeholderIdx]}
                         disabled={parsing}
-                        className="flex-1 bg-bg/80 border border-border rounded-sm px-3 py-2.5 text-[12px] font-mono text-text placeholder:text-dim/60 placeholder:italic focus:outline-none focus:border-accent/40 transition-all disabled:opacity-50"
+                        className="flex-1 bg-bg/80 border border-border rounded-sm px-3 py-2.5 text-[16px] font-mono text-text placeholder:text-dim/60 placeholder:italic focus:outline-none focus:border-accent/40 transition-all disabled:opacity-50"
                     />
                     <button
                         onClick={handleSend}

@@ -65,7 +65,7 @@ export default function CommandInput({ onSend, loading, allowedActions, pendingI
                         onKeyDown={e => e.key === "Enter" && handleSend()}
                         placeholder={PLACEHOLDERS[placeholderIdx]}
                         disabled={loading}
-                        className="w-full bg-bg/80 border border-border rounded-sm px-4 py-3 text-[12px] md:text-[13px] font-mono text-text placeholder:text-dim/60 placeholder:italic focus:outline-none focus:border-accent/40 focus:shadow-[0_0_12px_rgba(0,224,255,0.06)] transition-all duration-200 disabled:opacity-50"
+                        className="w-full bg-bg/80 border border-border rounded-sm px-4 py-3 text-[16px] md:text-[13px] font-mono text-text placeholder:text-dim/60 placeholder:italic focus:outline-none focus:border-accent/40 focus:shadow-[0_0_12px_rgba(0,224,255,0.06)] transition-all duration-200 disabled:opacity-50"
                     />
                     {loading && (
                         <div className="absolute right-3 top-1/2 -translate-y-1/2">
@@ -76,8 +76,8 @@ export default function CommandInput({ onSend, loading, allowedActions, pendingI
                 <button
                     onClick={() => setShowActions(s => !s)}
                     className={`hidden md:flex items-center gap-1.5 px-3 py-3 rounded-sm text-[10px] font-semibold uppercase tracking-wider transition-all cursor-pointer border ${showActions
-                            ? "bg-accent/10 border-accent/30 text-accent shadow-[0_0_10px_rgba(0,224,255,0.08)]"
-                            : "bg-bg/60 border-border text-dim hover:text-muted hover:border-border"
+                        ? "bg-accent/10 border-accent/30 text-accent shadow-[0_0_10px_rgba(0,224,255,0.08)]"
+                        : "bg-bg/60 border-border text-dim hover:text-muted hover:border-border"
                         }`}
                     title="Toggle quick actions"
                 >

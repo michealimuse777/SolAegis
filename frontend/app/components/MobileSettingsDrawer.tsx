@@ -23,7 +23,10 @@ export default function MobileSettingsDrawer({ open, onClose, agentName, agentAd
 
     useEffect(() => {
         if (expanded === "memory" && agentName) {
-            fetch(`${API}/api/agents/${encodeURIComponent(agentName)}/memory`)
+            const token = typeof window !== "undefined" ? localStorage.getItem("solaegis_token") : null;
+            const headers: Record<string, string> = {};
+            if (token) headers.Authorization = `Bearer ${token}`;
+            fetch(`${API}/api/agents/${encodeURIComponent(agentName)}/memory`, { headers })
                 .then(r => r.json())
                 .then(d => setMemory(d))
                 .catch(() => { });
