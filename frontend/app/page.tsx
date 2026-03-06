@@ -7,6 +7,7 @@ import CommandInput from "./components/CommandInput";
 import AgentCreateModal from "./components/AgentCreateModal";
 import MobileAgentList from "./components/MobileAgentList";
 import MobileChatView from "./components/MobileChatView";
+import MultiAgentDemo from "./components/MultiAgentDemo";
 import type { ExecutionBlockData } from "./components/ExecutionBlock";
 
 const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000";
@@ -769,6 +770,9 @@ export default function Home() {
           pendingInput={pendingInput}
           onPendingClear={() => setPendingInput("")}
         />
+        {agents.length >= 2 && (
+          <MultiAgentDemo agents={agents} token={token} apiUrl={API} />
+        )}
       </div>
 
       {/* RIGHT: Risk Panel */}
