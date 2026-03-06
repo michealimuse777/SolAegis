@@ -987,49 +987,9 @@ app.get("/api/scheduler/jobs", async (_req, res) => {
     res.json(jobs);
 });
 
-// ─── Agent-specific schedules ───
-app.get("/api/agents/:id/schedules", async (req, res) => {
-    try {
-        const allJobs = await listScheduledJobs();
-        const agentId = req.params.id;
-        const filtered = allJobs.filter((j: any) =>
-            j.name?.includes(agentId) || j.key?.includes(agentId) || j.data?.agentId === agentId
-        );
-        res.json(filtered);
-    } catch (err: any) {
-        res.json([]);
-    }
-});
+// NOTE: /api/agents/:id/schedules and /api/agents/:id/history are defined below
+// with auth + Supabase fallback (lines ~1048 and ~1076).
 
-// ─── Agent action history ───
-app.get("/api/agents/:id/history", (req, res) => {
-    try {
-        const agentId = req.params.id;
-        // Combine audit log + memory actions
-        const audit = getAuditLog().filter((e: any) => e.agentId === agentId).slice(-20);
-        const mem = loadMemory(agentId);
-        const actions = [
-            ...(mem.successfulActions || []).map((a: any) => ({
-                type: "success", action: typeof a === "string" ? a : a.action,
-                detail: typeof a === "string" ? a : a.detail, timestamp: a.timestamp || 0,
-            })),
-            ...(mem.lastFailures || []).map((f: any) => ({
-                type: "failure", action: typeof f === "string" ? f : f.action,
-                detail: typeof f === "string" ? f : f.detail, timestamp: f.timestamp || 0,
-            })),
-            ...audit.map((e: any) => ({
-                type: e.status || "info", action: e.action,
-                detail: e.txSignature ? `Tx: ${e.txSignature.slice(0, 12)}...` : e.reason || "completed",
-                timestamp: e.timestamp || 0,
-            })),
-        ];
-        // Sort by timestamp desc, limit to 20
-        actions.sort((a: any, b: any) => (b.timestamp || 0) - (a.timestamp || 0));
-        res.json(actions.slice(0, 20));
-    } catch {
-        res.json([]);
-    }
-});
 
 app.post("/api/scheduler/schedule", schedulerGuardrailMiddleware as any, async (req: AuthenticatedRequest, res) => {
     try {
@@ -1188,14 +1148,6 @@ app.post("/api/cron/schedule", async (req, res) => {
         }
         const data = { agentId, action, params: {} };
         await scheduleCronJob(name, data, pattern);
-        // Create a worker to process scheduled jobs
-        createWorker(async (jobData) => {
-            const agent = agentManager.get(jobData.agentId);
-            if (!agent) return;
-            const result = await agent.execute({ action: jobData.action as any, params: jobData.params || {} });
-            broadcast("cron:executed", { name, agentId: jobData.agentId, result });
-            console.log(`[Cron] Executed ${name}: ${jobData.action} for ${jobData.agentId}`);
-        });
         res.json({ success: true, name, pattern, agentId, action });
     } catch (err: any) {
         res.status(500).json({ error: err.message });
@@ -1228,95 +1180,95 @@ async function start() {
     console.log("║       🛡️  SolAegis Backend  🛡️         ║");
     console.log("╚══════════════════════════════════════╝\n");
 
-    // Init scheduler (graceful degradation)
-    const redisReady = await initScheduler(REDIS_URL);
-    if (redisReady) {
-        createWorker(async (data) => {
-            const agent = agentManager.get(data.agentId);
-            if (!agent) {
-                console.warn(`[Worker] Agent ${data.agentId} not found, skipping job`);
-                return;
-            }
+    // Init scheduler (graceful degradation — falls back to in-process timers)
+    await initScheduler(REDIS_URL);
 
-            const action = data.action || "dermercist";
-            console.log(`[Worker] Executing ${action} for agent ${data.agentId}`);
+    // Register the job processor — works with both Redis (BullMQ) and in-process fallback
+    createWorker(async (data) => {
+        const agent = agentManager.get(data.agentId);
+        if (!agent) {
+            console.warn(`[Worker] Agent ${data.agentId} not found, skipping job`);
+            return;
+        }
 
-            try {
-                let result: any = {};
+        const action = data.action || "dermercist";
+        console.log(`[Worker] Executing ${action} for agent ${data.agentId}`);
 
-                if (action === "scam_check") {
-                    const { checkTokenSafety } = await import("./skills/scamFilter.js");
-                    const { TOKEN_PROGRAM_ID } = await import("@solana/spl-token");
-                    const keypair = agent.getKeypair();
-                    const tokenAccounts = await connection.getParsedTokenAccountsByOwner(
-                        keypair.publicKey, { programId: TOKEN_PROGRAM_ID });
-                    const flagged: string[] = [];
-                    for (const ta of tokenAccounts.value.slice(0, 5)) {
-                        const mint = ta.account.data.parsed?.info?.mint;
-                        if (!mint) continue;
-                        try {
-                            const check = await checkTokenSafety(connection, new PublicKey(mint));
-                            if (!check.safe) flagged.push(mint);
-                        } catch { }
-                    }
-                    result = { action: "scam_check", scanned: tokenAccounts.value.length, flagged: flagged.length };
-                } else if (action === "scan_airdrops") {
-                    const execResult = await agent.execute({ action: "scan_airdrops" as any, params: {} });
-                    result = { action: "scan_airdrops", ...execResult };
-                } else if (action === "recover") {
-                    const { findAllRecoverable } = await import("./skills/solRecovery.js");
-                    const { createCloseAccountInstruction } = await import("@solana/spl-token");
-                    const { Transaction: Tx } = await import("@solana/web3.js");
-                    const keypair = agent.getKeypair();
-                    const recoverable = await findAllRecoverable(connection, keypair.publicKey);
-                    if (recoverable.length > 0) {
-                        const batch = recoverable.slice(0, 10);
-                        const tx = new Tx();
-                        for (const acc of batch) {
-                            tx.add(createCloseAccountInstruction(acc.address, keypair.publicKey, keypair.publicKey));
-                        }
-                        const sig = await connection.sendTransaction(tx, [keypair]);
-                        await connection.confirmTransaction(sig, "confirmed");
-                        result = { action: "recover", recovered: batch.length, signature: sig };
-                    } else {
-                        result = { action: "recover", recovered: 0 };
-                    }
-                } else if (action === "transfer") {
-                    const { Transaction: Tx, SystemProgram, LAMPORTS_PER_SOL } = await import("@solana/web3.js");
-                    const keypair = agent.getKeypair();
-                    const to = data.params?.to;
-                    const amount = parseFloat(data.params?.amount || "0");
-                    if (to && amount > 0) {
-                        const tx = new Tx().add(
-                            SystemProgram.transfer({
-                                fromPubkey: keypair.publicKey,
-                                toPubkey: new PublicKey(to),
-                                lamports: Math.round(amount * LAMPORTS_PER_SOL),
-                            })
-                        );
-                        const sig = await connection.sendTransaction(tx, [keypair]);
-                        await connection.confirmTransaction(sig, "confirmed");
-                        result = { action: "transfer", to, amount, signature: sig };
-                    } else {
-                        result = { action: "transfer", error: "Missing to/amount params" };
-                    }
-                } else if (action === "airdrop") {
-                    const sig = await connection.requestAirdrop(agent.getKeypair().publicKey, 1e9);
-                    await connection.confirmTransaction(sig, "confirmed");
-                    result = { action: "airdrop", signature: sig };
-                } else {
-                    // Default: run derMercist
-                    const dmResult = await derMercist.run(agent);
-                    result = { action: "dermercist", ...dmResult };
+        try {
+            let result: any = {};
+
+            if (action === "scam_check") {
+                const { checkTokenSafety } = await import("./skills/scamFilter.js");
+                const { TOKEN_PROGRAM_ID } = await import("@solana/spl-token");
+                const keypair = agent.getKeypair();
+                const tokenAccounts = await connection.getParsedTokenAccountsByOwner(
+                    keypair.publicKey, { programId: TOKEN_PROGRAM_ID });
+                const flagged: string[] = [];
+                for (const ta of tokenAccounts.value.slice(0, 5)) {
+                    const mint = ta.account.data.parsed?.info?.mint;
+                    if (!mint) continue;
+                    try {
+                        const check = await checkTokenSafety(connection, new PublicKey(mint));
+                        if (!check.safe) flagged.push(mint);
+                    } catch { }
                 }
-
-                broadcast("cron:executed", { agentId: data.agentId, ...result });
-            } catch (err: any) {
-                console.error(`[Worker] ${action} failed for ${data.agentId}:`, err.message);
-                broadcast("cron:failed", { agentId: data.agentId, action, error: err.message });
+                result = { action: "scam_check", scanned: tokenAccounts.value.length, flagged: flagged.length };
+            } else if (action === "scan_airdrops") {
+                const execResult = await agent.execute({ action: "scan_airdrops" as any, params: {} });
+                result = { action: "scan_airdrops", ...execResult };
+            } else if (action === "recover") {
+                const { findAllRecoverable } = await import("./skills/solRecovery.js");
+                const { createCloseAccountInstruction } = await import("@solana/spl-token");
+                const { Transaction: Tx } = await import("@solana/web3.js");
+                const keypair = agent.getKeypair();
+                const recoverable = await findAllRecoverable(connection, keypair.publicKey);
+                if (recoverable.length > 0) {
+                    const batch = recoverable.slice(0, 10);
+                    const tx = new Tx();
+                    for (const acc of batch) {
+                        tx.add(createCloseAccountInstruction(acc.address, keypair.publicKey, keypair.publicKey));
+                    }
+                    const sig = await connection.sendTransaction(tx, [keypair]);
+                    await connection.confirmTransaction(sig, "confirmed");
+                    result = { action: "recover", recovered: batch.length, signature: sig };
+                } else {
+                    result = { action: "recover", recovered: 0 };
+                }
+            } else if (action === "transfer") {
+                const { Transaction: Tx, SystemProgram, LAMPORTS_PER_SOL } = await import("@solana/web3.js");
+                const keypair = agent.getKeypair();
+                const to = data.params?.to;
+                const amount = parseFloat(data.params?.amount || "0");
+                if (to && amount > 0) {
+                    const tx = new Tx().add(
+                        SystemProgram.transfer({
+                            fromPubkey: keypair.publicKey,
+                            toPubkey: new PublicKey(to),
+                            lamports: Math.round(amount * LAMPORTS_PER_SOL),
+                        })
+                    );
+                    const sig = await connection.sendTransaction(tx, [keypair]);
+                    await connection.confirmTransaction(sig, "confirmed");
+                    result = { action: "transfer", to, amount, signature: sig };
+                } else {
+                    result = { action: "transfer", error: "Missing to/amount params" };
+                }
+            } else if (action === "airdrop") {
+                const sig = await connection.requestAirdrop(agent.getKeypair().publicKey, 1e9);
+                await connection.confirmTransaction(sig, "confirmed");
+                result = { action: "airdrop", signature: sig };
+            } else {
+                // Default: run derMercist
+                const dmResult = await derMercist.run(agent);
+                result = { action: "dermercist", ...dmResult };
             }
-        });
-    }
+
+            broadcast("cron:executed", { agentId: data.agentId, ...result });
+        } catch (err: any) {
+            console.error(`[Worker] ${action} failed for ${data.agentId}:`, err.message);
+            broadcast("cron:failed", { agentId: data.agentId, action, error: err.message });
+        }
+    });
 
     // ─── Memory API ───
     app.get("/api/agents/:id/memory", (req, res) => {
@@ -1404,7 +1356,7 @@ async function start() {
                                             }).catch(() => { });
                                         }).catch(() => { });
                                     }
-                                } catch { }
+                                } catch (err: any) { console.warn(`[WS] Schedule failed: ${err.message}`); }
                             }
                         }
 
@@ -1425,7 +1377,39 @@ async function start() {
                                     executedReplies.push(`✅ Removed ${removed} scheduled job(s).`);
                                     auditLog({ agentId: msg.agentId, action: "unschedule", status: "success", reason: `Removed ${intent.action}` });
                                 }
-                            } catch { }
+                            } catch (err: any) { console.warn(`[WS] Unschedule failed: ${err.message}`); }
+                        }
+
+                        // Handle delay intent — one-shot delayed jobs ("transfer in 6 hours")
+                        if (intent.type === "delay" && intent.action && intent.delay) {
+                            const ms = delayToMs(intent.delay);
+                            if (!ms) {
+                                executedReplies.push(`⚠️ I don't support the delay "${intent.delay}". Try: 1m, 5m, 10m, 30m, 1h, 2h, 3h, 6h, 12h, or 24h.`);
+                            } else {
+                                try {
+                                    const jobName = `${msg.agentId}-delayed-${intent.action}-${Date.now()}`;
+                                    const jobId = await scheduleDelayedJob(jobName, {
+                                        agentId: msg.agentId,
+                                        action: intent.action,
+                                        params: intent.params || {},
+                                    }, ms);
+
+                                    if (jobId) {
+                                        const humanDelay = ms >= 3_600_000 ? `${ms / 3_600_000} hour(s)` : `${ms / 60_000} minute(s)`;
+                                        const paramDesc = intent.params?.to
+                                            ? ` — sending ${intent.params.amount || ""} SOL to ${intent.params.to}`
+                                            : "";
+                                        executedReplies.push(`⏳ Got it! I'll execute "${intent.action}" in ${humanDelay}${paramDesc}. Job queued.`);
+                                        broadcast("cron:delayed", { agentId: msg.agentId, action: intent.action, delay: intent.delay, delayMs: ms, jobId });
+                                        auditLog({ agentId: msg.agentId, action: "delay", status: "success", reason: `${intent.action} in ${humanDelay}` });
+                                    } else {
+                                        executedReplies.push("⚠️ Scheduler unavailable — delayed job not created.");
+                                    }
+                                } catch (err: any) {
+                                    console.warn(`[WS] Delay job failed: ${err.message}`);
+                                    executedReplies.push(`❌ Failed to create delayed job: ${err.message}`);
+                                }
+                            }
                         }
 
                         // Execute actions (airdrop, transfer, swap, recover, scam_check, scan_airdrops)
@@ -1525,7 +1509,7 @@ async function start() {
 
                                     auditLog({
                                         agentId: msg.agentId, action,
-                                        status: response.executionResult?.success ? "success" : "success",
+                                        status: response.executionResult?.success ? "success" : "failed",
                                         txSignature: response.executionResult?.signature,
                                     });
                                 } catch (err: any) {

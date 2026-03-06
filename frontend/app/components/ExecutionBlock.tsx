@@ -78,14 +78,14 @@ export default function ExecutionBlock({ block }: { block: ExecutionBlockData })
     if (isUser) {
         return (
             <div className="flex justify-end block-enter">
-                <div className="max-w-[80%] bg-[#00E0FF]/[0.07] rounded-2xl rounded-br-sm px-4 py-2.5">
+                <div className="max-w-[80%] bg-[#00E0FF]/[0.07] rounded-2xl rounded-br-sm px-4 py-2.5 overflow-hidden">
                     <div className="flex items-center justify-end gap-1.5 mb-1">
                         <span className="text-[8px] text-[#484F58] font-mono tabular-nums">
                             {new Date(block.timestamp).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}
                         </span>
                     </div>
-                    <p className="text-[13px] leading-relaxed text-[#E6EDF3] font-medium m-0"
-                        style={{ fontFamily: "'Inter', 'Segoe UI', system-ui, sans-serif" }}>
+                    <p className="text-[13px] leading-relaxed text-[#E6EDF3] font-medium m-0 break-words"
+                        style={{ fontFamily: "'Inter', 'Segoe UI', system-ui, sans-serif", overflowWrap: "break-word", wordBreak: "break-word" }}>
                         {block.content}
                     </p>
                 </div>
