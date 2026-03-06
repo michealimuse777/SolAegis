@@ -227,9 +227,13 @@ export default function Home() {
         localStorage.setItem("solaegis_token", data.token);
         localStorage.setItem("solaegis_wallet", pubkey);
         localStorage.setItem("solaegis_userId", data.userId || pubkey);
+      } else {
+        console.error("Auth failed — no token in response:", data);
+        alert(data.error || "Authentication failed. Please try again.");
       }
     } catch (err: any) {
       console.error("Wallet connect failed:", err);
+      alert("Connection error: " + (err.message || "Network request failed. Check console for details."));
     }
     setConnecting(false);
   };
