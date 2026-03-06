@@ -118,7 +118,25 @@ const DELAY_MAP: Record<string, number> = {
 
 export function delayToMs(delay: string): number | null {
     const key = delay.toLowerCase().trim();
-    return DELAY_MAP[key] ?? null;
+
+    // Check exact map first
+    if (DELAY_MAP[key] != null) return DELAY_MAP[key];
+
+    // Dynamic parsing: "6 hours", "in 45 minutes", "after 2h", "30 min"
+    const match = key.match(/^(?:in\s+|after\s+)?(\d+)\s*(m|min|mins|minutes?|h|hr|hrs|hours?)$/);
+    if (match) {
+        const n = parseInt(match[1]);
+        const unit = match[2].charAt(0); // m or h
+
+        if (unit === "m" && n >= 1 && n <= 1440) {
+            return n * 60_000;
+        }
+        if (unit === "h" && n >= 1 && n <= 24) {
+            return n * 3_600_000;
+        }
+    }
+
+    return null;
 }
 
 export interface ChatResponse {
@@ -272,13 +290,51 @@ export class ChatHandler {
             return { type: "schedule", action, interval: schedMatch[2].trim() };
         }
 
-        // Swap
+        // ─── DELAY DETECTION ───
+        // Must come BEFORE swap/transfer so "transfer 0.1 SOL to XYZ in 6 hours" is delay, not execute.
+        // Matches: "... in 6 hours", "... in 30 minutes", "... in 2h", "... after 1 hour"
+        const delayTimeMatch = msg.match(/\b(?:in|after)\s+(\d+\s*(?:m|min|mins|minutes?|h|hr|hrs|hours?))\s*$/i);
+        if (delayTimeMatch) {
+            const delayStr = delayTimeMatch[1].trim();
+            const ms = delayToMs(delayStr);
+            if (ms) {
+                // Strip the time part to identify the action from the rest
+                const actionPart = msg.slice(0, msg.lastIndexOf(delayTimeMatch[0])).trim();
+
+                // Swap with delay: "swap 1 SOL for USDC in 6 hours"
+                const swapDelay = actionPart.match(/(?:swap|trade|exchange)\s+([\d.]+)\s+(\w+)\s+(?:to|for|into)\s+(\w+)/i);
+                if (swapDelay) {
+                    return { type: "delay", action: "swap", delay: delayStr, params: { amount: swapDelay[1], from: swapDelay[2].toUpperCase(), to: swapDelay[3] } };
+                }
+
+                // Transfer with delay: "send 0.1 SOL to ABC123 in 6 hours"
+                const transferDelay = actionPart.match(/(?:send|transfer|pay)\s+([\d.]+)\s+(\w+)\s+to\s+([A-Za-z0-9]{20,})/i);
+                if (transferDelay) {
+                    return { type: "delay", action: "transfer", delay: delayStr, params: { amount: transferDelay[1], token: transferDelay[2].toUpperCase(), to: transferDelay[3] } };
+                }
+
+                // Generic action with delay: "airdrop in 30 minutes", "recover in 2 hours"
+                let action = "unknown";
+                if (actionPart.match(/\b(airdrop|fund me|give me sol)\b/i)) action = "airdrop";
+                else if (actionPart.match(/\b(recover|reclaim|close empty|clean up)\b/i)) action = "recover";
+                else if (actionPart.match(/\b(scam|rug|safety|check token|scan.*scam)\b/i)) action = "scam_check";
+                else if (actionPart.match(/\b(scan airdrop|check airdrop)\b/i)) action = "scan_airdrops";
+                else if (actionPart.match(/\b(swap|trade|exchange)\b/i)) action = "swap";
+                else if (actionPart.match(/\b(send|transfer|pay)\b/i)) action = "transfer";
+
+                if (action !== "unknown") {
+                    return { type: "delay", action, delay: delayStr, params: {} };
+                }
+            }
+        }
+
+        // Swap (immediate — no time qualifier detected above)
         const swapMatch = msg.match(/(?:swap|trade|exchange)\s+([\d.]+)\s+(\w+)\s+(?:to|for|into)\s+(\w+)/i);
         if (swapMatch) {
             return { type: "execute_action", action: "swap", params: { amount: swapMatch[1], from: swapMatch[2].toUpperCase(), to: swapMatch[3] } };
         }
 
-        // Transfer
+        // Transfer (immediate — no time qualifier detected above)
         const transferMatch = msg.match(/(?:send|transfer|pay)\s+([\d.]+)\s+(\w+)\s+to\s+([A-Za-z0-9]{20,})/i);
         if (transferMatch) {
             return { type: "execute_action", action: "transfer", params: { amount: transferMatch[1], token: transferMatch[2].toUpperCase(), to: transferMatch[3] } };
