@@ -6,6 +6,9 @@ interface ExecutionStreamProps {
     blocks: ExecutionBlockData[];
     agentName?: string;
     agentRole?: string;
+    allowedActions?: string[];
+    maxSolPerTx?: number;
+    dailyTxLimit?: number;
     parsing?: boolean;
     parsingStep?: "analyzing" | "processing" | null;
     onTogglePanel?: () => void;
@@ -14,7 +17,12 @@ interface ExecutionStreamProps {
 
 const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000";
 
-export default function ExecutionStream({ blocks, agentName, agentRole, parsing, parsingStep, onTogglePanel, showPanel }: ExecutionStreamProps) {
+const ACTION_ICONS: Record<string, string> = {
+    transfer: "↗", swap: "⇄", recover: "♻", scam_check: "🔍",
+    scan_airdrops: "📡", airdrop: "💧", balance: "💰",
+};
+
+export default function ExecutionStream({ blocks, agentName, agentRole, allowedActions, maxSolPerTx, dailyTxLimit, parsing, parsingStep, onTogglePanel, showPanel }: ExecutionStreamProps) {
     const endRef = useRef<HTMLDivElement>(null);
     const [solPrice, setSolPrice] = useState<{ price: number; change: number; trend: string } | null>(null);
 
@@ -81,24 +89,56 @@ export default function ExecutionStream({ blocks, agentName, agentRole, parsing,
             <div className="flex-1 overflow-y-auto p-4 md:p-6 space-y-5 md:space-y-6 grid-bg">
                 {blocks.length === 0 && !parsing && (
                     <div className="flex items-center justify-center h-full">
-                        <div className="text-center max-w-xs slide-up">
-                            <p className="text-[14px] text-text font-medium mb-1">Ask your agent to do something</p>
-                            <p className="text-[11px] text-dim mb-6">Swap tokens, transfer SOL or SPL tokens, scan for scams, and more.</p>
+                        <div className="text-center max-w-sm slide-up">
+                            <p className="text-[15px] text-text font-semibold mb-0.5">
+                                {agentName ? `${agentName}` : "Your Agent"}
+                            </p>
+                            <p className="text-[10px] text-accent uppercase tracking-[0.2em] font-medium mb-5">
+                                {agentRole || "Agent"} • Ready
+                            </p>
 
-                            <div className="space-y-2 text-left">
+                            {/* Capabilities grid */}
+                            {allowedActions && allowedActions.length > 0 && (
+                                <div className="mb-4">
+                                    <p className="text-[9px] text-dim uppercase tracking-[0.15em] mb-2 text-left">Capabilities</p>
+                                    <div className="grid grid-cols-2 gap-1.5">
+                                        {allowedActions.map(action => (
+                                            <div key={action} className="flex items-center gap-2 text-[10px] px-3 py-2 border border-border rounded-sm text-left hover:border-accent/20 transition-colors">
+                                                <span className="text-[12px]">{ACTION_ICONS[action] || "◆"}</span>
+                                                <span className="text-muted capitalize">{action.replace(/_/g, " ")}</span>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* Risk limits */}
+                            <div className="space-y-1.5 mb-4">
+                                <p className="text-[9px] text-dim uppercase tracking-[0.15em] mb-2 text-left">Risk Limits</p>
                                 <div className="flex items-center justify-between text-[10px] px-3 py-2 border border-border rounded-sm">
-                                    <span className="text-muted">Simulation Guard</span>
-                                    <span className="text-success-text font-mono text-[9px]">Active</span>
+                                    <span className="text-muted">Max per Tx</span>
+                                    <span className="text-accent font-mono text-[9px]">{maxSolPerTx ?? "?"} SOL</span>
                                 </div>
                                 <div className="flex items-center justify-between text-[10px] px-3 py-2 border border-border rounded-sm">
-                                    <span className="text-muted">Supports</span>
-                                    <span className="text-accent font-mono text-[9px]">SOL + SPL Tokens</span>
+                                    <span className="text-muted">Daily Limit</span>
+                                    <span className="text-accent font-mono text-[9px]">{dailyTxLimit ?? "?"} txs</span>
+                                </div>
+                            </div>
+
+                            {/* Security status */}
+                            <div className="space-y-1.5">
+                                <p className="text-[9px] text-dim uppercase tracking-[0.15em] mb-2 text-left">Security</p>
+                                <div className="flex items-center justify-between text-[10px] px-3 py-2 border border-border rounded-sm">
+                                    <span className="text-muted">Policy Engine</span>
+                                    <span className="text-success-text font-mono text-[9px]">Active</span>
                                 </div>
                                 <div className="flex items-center justify-between text-[10px] px-3 py-2 border border-border rounded-sm">
                                     <span className="text-muted">Injection Guard</span>
                                     <span className="text-success-text font-mono text-[9px]">Active</span>
                                 </div>
                             </div>
+
+                            <p className="text-[10px] text-dim mt-5 italic">Type a command or click ⚡ for quick actions</p>
                         </div>
                     </div>
                 )}

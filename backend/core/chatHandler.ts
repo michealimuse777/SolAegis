@@ -14,7 +14,7 @@ import { getMarketData, marketToPrompt } from "../services/marketData.js";
 // ─────────── Types ───────────
 
 export interface ChatIntent {
-    type: "execute_action" | "update_config" | "reload_skills" | "query_status" | "explain" | "schedule" | "unschedule" | "delay" | "remember" | "market_query" | "capability_check" | "unknown";
+    type: "execute_action" | "update_config" | "reload_skills" | "query_status" | "query_balance" | "explain" | "schedule" | "unschedule" | "delay" | "remember" | "market_query" | "capability_check" | "unknown";
     action?: string;
     params?: Record<string, any>;
     configUpdates?: Partial<Pick<AgentConfig, "role" | "riskProfile" | "dailyTxLimit" | "allowedActions">>;
@@ -183,6 +183,9 @@ export class ChatHandler {
                 case "reload_skills":
                     response = this.handleSkillReload(agentId);
                     break;
+                case "query_balance":
+                    response = { reply: "Checking your wallet balance...", intent };
+                    break;
                 case "query_status":
                     response = await this.handleQuery(agentId, config);
                     break;
@@ -288,6 +291,9 @@ export class ChatHandler {
 
         // Recover
         if (msg.match(/\b(recover|reclaim|close empty|clean up)/)) return { type: "execute_action", action: "recover", params: {} };
+
+        // Price / Market
+        if (msg.match(/\b(price|market|how.?s the market|sol price|price of sol|market update|market data)\b/i)) return { type: "market_query" };
 
         // Explain / help
         if (msg.match(/\b(what can you|capabilities|help me|what do you)\b/)) return { type: "explain" };

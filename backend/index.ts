@@ -443,6 +443,17 @@ app.post("/api/agents/:id/chat", chatRateLimiter as any, async (req: Authenticat
                         if (jobId) {
                             executedReplies.push(`⏰ Done! I'll run "${intent.action}" every ${intent.interval} automatically. You can say "stop ${intent.action}" anytime to cancel.`);
                             broadcast("cron:scheduled", { agentId: req.params.id, action: intent.action, interval: intent.interval, cron, jobId });
+
+                            // Persist to Supabase
+                            import("./services/supabaseStore.js").then(({ insertScheduledJob }) => {
+                                insertScheduledJob({
+                                    agent_id: req.params.id,
+                                    action: intent.action!,
+                                    cron_pattern: cron,
+                                    interval_text: intent.interval,
+                                    bullmq_key: jobName,
+                                }).catch(() => { });
+                            }).catch(() => { });
                         } else {
                             executedReplies.push("⚠️ Scheduler unavailable — Redis isn't connected. The job wasn't created.");
                         }
@@ -1026,6 +1037,58 @@ app.post("/api/scheduler/schedule", schedulerGuardrailMiddleware as any, async (
     }
 });
 
+// ─── Agent Schedules & History ───
+app.get("/api/agents/:id/schedules", authMiddleware as any, async (req: AuthenticatedRequest, res) => {
+    try {
+        const agentId = req.params.id;
+        // Try Supabase first
+        try {
+            const { getScheduledJobs } = await import("./services/supabaseStore.js");
+            const dbJobs = await getScheduledJobs(agentId);
+            if (dbJobs.length > 0) {
+                return res.json(dbJobs.map((j: any) => ({
+                    name: `${j.action}-${agentId}`,
+                    action: j.action,
+                    cron: j.cron_pattern || "—",
+                    interval: j.interval_text || "—",
+                    status: j.status,
+                    created: j.created_at,
+                })));
+            }
+        } catch { }
+        // Fallback: BullMQ
+        const allJobs = await listScheduledJobs();
+        const agentJobs = allJobs.filter((j: any) => j.data?.agentId === agentId || j.name?.includes(agentId));
+        res.json(agentJobs);
+    } catch (err: any) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+app.get("/api/agents/:id/history", authMiddleware as any, async (req: AuthenticatedRequest, res) => {
+    try {
+        const agentId = req.params.id;
+        // Try Supabase first
+        try {
+            const { getAgentHistory } = await import("./services/supabaseStore.js");
+            const dbHistory = await getAgentHistory(agentId, 30);
+            if (dbHistory.length > 0) {
+                return res.json(dbHistory);
+            }
+        } catch { }
+        // Fallback: local audit log
+        const entries = getAuditLog(agentId, 30);
+        res.json(entries.map(e => ({
+            type: e.status === "success" ? "success" : e.status === "denied" ? "denied" : "failure",
+            action: e.action,
+            detail: e.txSignature ? `Tx: ${e.txSignature.slice(0, 12)}...` : e.reason || "completed",
+            timestamp: e.timestamp,
+        })));
+    } catch (err: any) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
 // ─── LLM Stats ───
 app.get("/api/llm/stats", (_req, res) => {
     res.json(llmManager.getUsageStats());
@@ -1279,16 +1342,268 @@ async function start() {
         console.log(`[Server] REST API → http://localhost:${PORT}`);
     });
 
-    // Start WebSocket
+    // Start WebSocket with streaming chat support
     const wss = new WebSocketServer({ port: WS_PORT });
     wss.on("connection", (ws) => {
         wsClients.add(ws);
         console.log("[WS] Client connected");
         ws.on("close", () => wsClients.delete(ws));
+
+        ws.on("message", async (raw) => {
+            try {
+                const msg = JSON.parse(raw.toString());
+
+                // Stream chat: { type: "chat:stream", agentId, message, token }
+                if (msg.type === "chat:stream" && msg.agentId && msg.message) {
+                    const agent = agentManager.get(msg.agentId);
+                    if (!agent) {
+                        ws.send(JSON.stringify({ type: "chat:error", error: "Agent not found" }));
+                        return;
+                    }
+
+                    // First pass: parse intents deterministically (instant)
+                    const response = await chatHandler.handleMessage(msg.agentId, msg.message);
+
+                    // Process intents (schedule, unschedule, audit) — mirror HTTP handler
+                    const intents = response.intents || [];
+                    const executedReplies: string[] = [];
+                    for (const intent of intents) {
+                        // Handle schedule intent
+                        if (intent.type === "schedule" && intent.action && intent.interval) {
+                            const cron = intervalToCron(intent.interval);
+                            if (cron) {
+                                try {
+                                    const jobName = `${msg.agentId}-${intent.action}`;
+                                    const jobId = await scheduleCronJob(jobName, {
+                                        agentId: msg.agentId,
+                                        action: intent.action,
+                                        params: intent.params || {},
+                                    }, cron);
+                                    if (jobId) {
+                                        executedReplies.push(`✅ Scheduled! I'll run "${intent.action}" every ${intent.interval} automatically.`);
+                                        broadcast("cron:scheduled", { agentId: msg.agentId, action: intent.action, interval: intent.interval, cron, jobId });
+                                        auditLog({ agentId: msg.agentId, action: "schedule", status: "success", reason: `${intent.action} every ${intent.interval}` });
+                                        // Persist to Supabase
+                                        import("./services/supabaseStore.js").then(({ insertScheduledJob }) => {
+                                            insertScheduledJob({
+                                                agent_id: msg.agentId,
+                                                action: intent.action!,
+                                                cron_pattern: cron,
+                                                interval_text: intent.interval,
+                                                bullmq_key: jobName,
+                                            }).catch(() => { });
+                                        }).catch(() => { });
+                                    }
+                                } catch { }
+                            }
+                        }
+
+                        // Handle unschedule intent
+                        if (intent.type === "unschedule" && intent.action) {
+                            try {
+                                const jobs = await listScheduledJobs();
+                                let removed = 0;
+                                for (const job of jobs) {
+                                    if (intent.action === "all" || job.name?.includes(intent.action)) {
+                                        if (job.name?.includes(msg.agentId)) {
+                                            await removeScheduledJob(job.name, job.pattern || job.cron);
+                                            removed++;
+                                        }
+                                    }
+                                }
+                                if (removed > 0) {
+                                    executedReplies.push(`✅ Removed ${removed} scheduled job(s).`);
+                                    auditLog({ agentId: msg.agentId, action: "unschedule", status: "success", reason: `Removed ${intent.action}` });
+                                }
+                            } catch { }
+                        }
+
+                        // Execute actions (airdrop, transfer, swap, recover, scam_check, scan_airdrops)
+                        if (intent.type === "execute_action" && intent.action) {
+                            const action = intent.action;
+                            const params = intent.params || {};
+                            const agent = agentManager.get(msg.agentId);
+
+                            if (!agent) {
+                                executedReplies.push(`⚠️ Agent ${msg.agentId} not found.`);
+                            } else if (response.policyResult && !response.policyResult.allowed) {
+                                auditLog({ agentId: msg.agentId, action, status: "denied", reason: response.policyResult.reason });
+                            } else {
+                                try {
+                                    if (action === "airdrop") {
+                                        const sig = await connection.requestAirdrop(agent.getKeypair().publicKey, 1e9);
+                                        await connection.confirmTransaction(sig, "confirmed");
+                                        const balance = await connection.getBalance(agent.getKeypair().publicKey) / 1e9;
+                                        executedReplies.push(`✅ Airdropped 1 SOL. New balance: ${balance.toFixed(4)} SOL`);
+                                        response.executionResult = { success: true, action: "airdrop", signature: sig };
+                                    } else if (action === "transfer" && params.to && params.amount) {
+                                        const keypair = agent.getKeypair();
+                                        const { Transaction: Tx, SystemProgram, LAMPORTS_PER_SOL } = await import("@solana/web3.js");
+                                        const lamports = Math.round(parseFloat(params.amount) * LAMPORTS_PER_SOL);
+                                        const tx = new Tx().add(SystemProgram.transfer({ fromPubkey: keypair.publicKey, toPubkey: new PublicKey(params.to), lamports }));
+                                        const sig = await connection.sendTransaction(tx, [keypair]);
+                                        await connection.confirmTransaction(sig, "confirmed");
+                                        executedReplies.push(`✅ Transferred ${params.amount} SOL to \`${params.to}\`. Tx: ${sig}`);
+                                        response.executionResult = { success: true, action: "transfer", signature: sig };
+                                    } else if (action === "recover") {
+                                        const keypair = agent.getKeypair();
+                                        const { findAllRecoverable } = await import("./skills/solRecovery.js");
+                                        const { createCloseAccountInstruction } = await import("@solana/spl-token");
+                                        const { Transaction: Tx } = await import("@solana/web3.js");
+                                        const recoverable = await findAllRecoverable(connection, keypair.publicKey);
+                                        if (recoverable.length === 0) {
+                                            executedReplies.push("ℹ️ No empty token accounts found. Nothing to recover.");
+                                        } else {
+                                            const batch = recoverable.slice(0, 10);
+                                            const tx = new Tx();
+                                            for (const acc of batch) {
+                                                tx.add(createCloseAccountInstruction(acc.address, keypair.publicKey, keypair.publicKey));
+                                            }
+                                            const sig = await connection.sendTransaction(tx, [keypair]);
+                                            await connection.confirmTransaction(sig, "confirmed");
+                                            const est = batch.reduce((s: number, a: any) => s + a.rentLamports / 1e9, 0);
+                                            executedReplies.push(`✅ Recovered ${batch.length} account(s), ~${est.toFixed(4)} SOL. Tx: ${sig}`);
+                                            response.executionResult = { success: true, action: "recover", signature: sig };
+                                        }
+                                    } else if (action === "scan_airdrops") {
+                                        const result = await agent.execute({ action: "scan_airdrops" as any, params: {} });
+                                        if (result.success) {
+                                            const airdrops = result.data || [];
+                                            executedReplies.push(airdrops.length === 0
+                                                ? "📊 Scan complete. No airdrop-eligible tokens found."
+                                                : `📊 Found **${airdrops.length}** token(s):\n${airdrops.map((a: any) => `• ${a.mint || "token"}: ${a.amount || "?"}`).join("\n")}`);
+                                        } else {
+                                            executedReplies.push(`❌ Scan failed: ${result.error}`);
+                                        }
+                                        response.executionResult = result;
+                                    } else if (action === "scam_check") {
+                                        const { checkTokenSafety } = await import("./skills/scamFilter.js");
+                                        const { TOKEN_PROGRAM_ID } = await import("@solana/spl-token");
+                                        const keypair = agent.getKeypair();
+                                        const tokenAccounts = await connection.getParsedTokenAccountsByOwner(keypair.publicKey, { programId: TOKEN_PROGRAM_ID });
+                                        if (tokenAccounts.value.length === 0) {
+                                            executedReplies.push("🔍 No token accounts found. Nothing to scan.");
+                                        } else {
+                                            const results: string[] = [];
+                                            for (const ta of tokenAccounts.value.slice(0, 5)) {
+                                                const mint = ta.account.data.parsed?.info?.mint;
+                                                if (!mint) continue;
+                                                try {
+                                                    const check = await checkTokenSafety(connection, new PublicKey(mint));
+                                                    results.push(`${check.safe ? "✅" : "⚠️"} **${mint.slice(0, 8)}...** — Risk: ${check.riskScore}/100`);
+                                                } catch { results.push(`❓ **${mint.slice(0, 8)}...** — Could not analyze`); }
+                                            }
+                                            executedReplies.push(`🔍 **Scam Scan** — ${tokenAccounts.value.length} token(s):\n\n${results.join("\n")}`);
+                                        }
+                                        response.executionResult = { success: true, action: "scam_check" };
+                                    } else if (action === "swap") {
+                                        const { swapTokens } = await import("./skills/swap.js");
+                                        const keypair = agent.getKeypair();
+                                        const inputMint = params.inputMint || params.from || params.tokenIn || "SOL";
+                                        const outputMint = params.outputMint || params.to || params.tokenOut || "devUSDC";
+                                        const amount = parseFloat(params.amount || "0.01");
+                                        if (!amount || amount <= 0) {
+                                            executedReplies.push("⚠️ Specify an amount. Example: \"swap 0.1 SOL to devUSDC\"");
+                                        } else {
+                                            const result = await swapTokens({ connection, payer: keypair, inputMint, outputMint, amount, slippageBps: parseInt(params.slippage || "100") });
+                                            executedReplies.push(`✅ **Swap Executed**\n• ${amount} ${inputMint} → ~${result.estimatedOutput} ${outputMint}\n• Tx: \`${result.signature}\``);
+                                            response.executionResult = { success: true, action: "swap", ...result };
+                                        }
+                                    } else {
+                                        executedReplies.push(`⚠️ "${action}" recognized but not implemented yet.`);
+                                    }
+
+                                    auditLog({
+                                        agentId: msg.agentId, action,
+                                        status: response.executionResult?.success ? "success" : "success",
+                                        txSignature: response.executionResult?.signature,
+                                    });
+                                } catch (err: any) {
+                                    executedReplies.push(`❌ ${action} failed: ${err.message}`);
+                                    auditLog({ agentId: msg.agentId, action, status: "failed", reason: err.message });
+                                }
+                            }
+                        }
+                    }
+
+                    // Stream the response back character by character for effect
+                    // Handle query_balance — fetch real SOL + SPL balances
+                    for (const intent of intents) {
+                        if (intent.type === "query_balance") {
+                            const agent = agentManager.get(msg.agentId);
+                            if (agent) {
+                                try {
+                                    const keypair = agent.getKeypair();
+                                    const solBal = await connection.getBalance(keypair.publicKey) / 1e9;
+                                    const { TOKEN_PROGRAM_ID } = await import("@solana/spl-token");
+                                    const tokenAccounts = await connection.getParsedTokenAccountsByOwner(
+                                        keypair.publicKey, { programId: TOKEN_PROGRAM_ID });
+
+                                    let balanceText = `💰 Wallet Balance\n\nSOL: ${solBal.toFixed(4)} SOL`;
+                                    if (tokenAccounts.value.length > 0) {
+                                        balanceText += `\n\nSPL Tokens:`;
+                                        for (const ta of tokenAccounts.value) {
+                                            const info = ta.account.data.parsed?.info;
+                                            const mint = info?.mint?.slice(0, 8) + "..." || "Unknown";
+                                            const amount = info?.tokenAmount?.uiAmountString || "0";
+                                            if (parseFloat(amount) > 0 || (info?.tokenAmount?.decimals || 0) > 0) {
+                                                balanceText += `\n• ${mint}: ${amount}`;
+                                            }
+                                        }
+                                    } else {
+                                        balanceText += `\n\nNo SPL token accounts found.`;
+                                    }
+                                    balanceText += `\n\nAddress: ${keypair.publicKey.toBase58()}`;
+                                    executedReplies.push(balanceText);
+                                } catch (err: any) {
+                                    executedReplies.push(`❌ Could not fetch balance: ${err.message}`);
+                                }
+                            }
+                        }
+                    }
+
+                    // Stream the response back character by character for effect
+                    const fullReply = executedReplies.length > 0
+                        ? response.reply + "\n\n" + executedReplies.join("\n")
+                        : response.reply || "";
+                    const chunkSize = 8; // Characters per chunk
+                    for (let i = 0; i < fullReply.length; i += chunkSize) {
+                        const chunk = fullReply.slice(i, i + chunkSize);
+                        ws.send(JSON.stringify({ type: "chat:chunk", text: chunk }));
+                        // Small delay for streaming effect (4ms per chunk ~ 2000 chars/sec)
+                        await new Promise(r => setTimeout(r, 4));
+                    }
+
+                    // Send final message with full response
+                    ws.send(JSON.stringify({
+                        type: "chat:done",
+                        reply: fullReply,
+                        intents: response.intents,
+                        policyResult: response.policyResult,
+                        executionResult: response.executionResult,
+                    }));
+                }
+            } catch (err: any) {
+                ws.send(JSON.stringify({ type: "chat:error", error: err.message }));
+            }
+        });
     });
     console.log(`[Server] WebSocket → ws://localhost:${WS_PORT}`);
     console.log(`[Server] RPC       → ${RPC_URL}`);
-    console.log(`[Server] LLM Keys  → ${keyStore.totalKeys()} loaded\n`);
+    console.log(`[Server] LLM Keys  → ${keyStore.totalKeys()} loaded`);
+
+    // Initialize Supabase
+    try {
+        const { getSupabase, isSupabaseReady } = await import("./services/supabaseClient.js");
+        if (isSupabaseReady()) {
+            getSupabase();
+            console.log(`[Server] Supabase  → connected`);
+        } else {
+            console.log(`[Server] Supabase  → not configured (using JSON files)`);
+        }
+    } catch { console.log(`[Server] Supabase  → unavailable`); }
+
+    console.log("");
 
     // Graceful shutdown
     process.on("SIGINT", async () => {

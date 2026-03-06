@@ -29,6 +29,7 @@ const PLACEHOLDERS = [
 export default function CommandInput({ onSend, loading, allowedActions, pendingInput, onPendingClear }: CommandInputProps) {
     const [value, setValue] = useState("");
     const [placeholderIdx, setPlaceholderIdx] = useState(0);
+    const [showActions, setShowActions] = useState(false);
     const inputRef = useRef<HTMLInputElement>(null);
 
     useEffect(() => {
@@ -73,6 +74,16 @@ export default function CommandInput({ onSend, loading, allowedActions, pendingI
                     )}
                 </div>
                 <button
+                    onClick={() => setShowActions(s => !s)}
+                    className={`hidden md:flex items-center gap-1.5 px-3 py-3 rounded-sm text-[10px] font-semibold uppercase tracking-wider transition-all cursor-pointer border ${showActions
+                            ? "bg-accent/10 border-accent/30 text-accent shadow-[0_0_10px_rgba(0,224,255,0.08)]"
+                            : "bg-bg/60 border-border text-dim hover:text-muted hover:border-border"
+                        }`}
+                    title="Toggle quick actions"
+                >
+                    <span className="text-[12px]">⚡</span>
+                </button>
+                <button
                     onClick={handleSend}
                     disabled={loading || !value.trim()}
                     className="btn-execute px-5 md:px-6 py-3 bg-accent rounded-sm text-[11px] md:text-[12px] font-semibold text-bg uppercase tracking-wider hover:bg-accent-hover transition-all disabled:opacity-30 disabled:shadow-none cursor-pointer border-none"
@@ -81,13 +92,16 @@ export default function CommandInput({ onSend, loading, allowedActions, pendingI
                 </button>
             </div>
 
-            {/* Quick action chips — desktop only */}
-            <div className="hidden md:flex flex-wrap gap-1.5 md:gap-2 mt-2.5 md:mt-3">
+            {/* Quick action chips — toggle on click, desktop only */}
+            <div
+                className={`hidden md:flex flex-wrap gap-1.5 md:gap-2 overflow-hidden transition-all duration-300 ease-in-out ${showActions ? "mt-2.5 md:mt-3 max-h-24 opacity-100" : "max-h-0 opacity-0 mt-0"
+                    }`}
+            >
                 {QUICK_ACTIONS.map(qa => (
                     <button
                         key={qa.label}
                         className="chip"
-                        onClick={() => { setValue(qa.cmd); inputRef.current?.focus(); }}
+                        onClick={() => { setValue(qa.cmd); inputRef.current?.focus(); setShowActions(false); }}
                     >
                         {qa.label}
                     </button>
@@ -96,3 +110,4 @@ export default function CommandInput({ onSend, loading, allowedActions, pendingI
         </div>
     );
 }
+

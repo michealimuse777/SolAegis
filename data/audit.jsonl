@@ -51,3 +51,19 @@
 {"userId":"wallet:7yySoYz7q6Qir8oeznFCpqMrtxRSsiuvUHTEwamMetDU","agentId":"Trading Agent","action":"scam_check","status":"success","timestamp":1772667667132,"iso":"2026-03-04T23:41:07.132Z"}
 {"userId":"wallet:7yySoYz7q6Qir8oeznFCpqMrtxRSsiuvUHTEwamMetDU","agentId":"Trading Agent","action":"recover","status":"success","timestamp":1772668207984,"iso":"2026-03-04T23:50:07.984Z"}
 {"userId":"wallet:7yySoYz7q6Qir8oeznFCpqMrtxRSsiuvUHTEwamMetDU","agentId":"Trading Agent","action":"scan_airdrops","status":"success","timestamp":1772668208249,"iso":"2026-03-04T23:50:08.249Z"}
+{"userId":"wallet:7yySoYz7q6Qir8oeznFCpqMrtxRSsiuvUHTEwamMetDU","agentId":"thebig tra","action":"create_agent","status":"success","timestamp":1772671666531,"iso":"2026-03-05T00:47:46.531Z"}
+{"agentId":"thebig tra","action":"schedule","status":"success","reason":"scam_check every 6 hours","timestamp":1772700729119,"iso":"2026-03-05T08:52:09.119Z"}
+{"agentId":"thebig tra","action":"unschedule","status":"success","reason":"Removed all","timestamp":1772700792912,"iso":"2026-03-05T08:53:12.912Z"}
+{"agentId":"Trading Agent","action":"swap","status":"success","timestamp":1772700830095,"iso":"2026-03-05T08:53:50.095Z"}
+{"agentId":"Trading Agent","action":"swap","status":"success","txSignature":"3r6WDAy8uNX28F3Fgcw6dJdRVhD9wC2GgYVDTi5QmH2xpaa6NTMjfgfCPtmtfzdtQVcqFUNNTCdQpnviM2VpUMnd","timestamp":1772701645988,"iso":"2026-03-05T09:07:25.988Z"}
+{"agentId":"Trading Agent","action":"swap","status":"failed","reason":"failed to get info about account 6XqJUqX4zUL7KEm9wGqTvJmE7DdC8e6MYeMBF9uYLckX: TypeError: fetch failed","timestamp":1772704613039,"iso":"2026-03-05T09:56:53.039Z"}
+{"agentId":"Trading Agent","action":"swap","status":"success","txSignature":"29Uy5TRWZpLCy7CVbTRY39hFaEtvAhydvyK6aZqz3RYfDYcCi2johY6MYmNsyXBa25eKLbAojAf4JHUwuQvvyKsy","timestamp":1772704647138,"iso":"2026-03-05T09:57:27.138Z"}
+{"agentId":"Trading Agent","action":"airdrop","status":"failed","reason":"airdrop to 2nm5UBWnGgm9r3dtAttsHuLaw7wnNYdBbzqXtAVEASds failed: Internal error","timestamp":1772704770647,"iso":"2026-03-05T09:59:30.647Z"}
+{"agentId":"Trading Agent","action":"scam_check","status":"success","timestamp":1772704883483,"iso":"2026-03-05T10:01:23.483Z"}
+{"agentId":"Trading Agent","action":"swap","status":"success","txSignature":"29hQmhhAysCiKPiVV5xnEMfrfCafvPGNtgGUiznFuqzagNWcvCPtfhtiSqbQi4JVkj86QJUkYiNDapP7WF49SqcF","timestamp":1772704893737,"iso":"2026-03-05T10:01:33.737Z"}
+{"agentId":"Trading Agent","action":"recover","status":"success","timestamp":1772704977142,"iso":"2026-03-05T10:02:57.142Z"}
+{"agentId":"Trading Agent","action":"transfer","status":"success","txSignature":"2tYTJovHxXaPkHtQnHakhRbDenno4MRQu1TFAWrC1YVMmdHHUqF73fZWnuVcEpQ9jNW5vwBASQWs6xshZbmjjoiJ","timestamp":1772705028779,"iso":"2026-03-05T10:03:48.779Z"}
+{"userId":"wallet:7yySoYz7q6Qir8oeznFCpqMrtxRSsiuvUHTEwamMetDU","agentId":"ag","action":"create_agent","status":"success","timestamp":1772745523875,"iso":"2026-03-05T21:18:43.875Z"}
+{"userId":"wallet:7yySoYz7q6Qir8oeznFCpqMrtxRSsiuvUHTEwamMetDU","agentId":"The new","action":"create_agent","status":"success","timestamp":1772746343154,"iso":"2026-03-05T21:32:23.154Z"}
+{"userId":"wallet:7yySoYz7q6Qir8oeznFCpqMrtxRSsiuvUHTEwamMetDU","agentId":"THE BOT","action":"create_agent","status":"success","timestamp":1772754706807,"iso":"2026-03-05T23:51:46.808Z"}
+{"agentId":"Trading Agent","action":"recover","status":"success","timestamp":1772755363557,"iso":"2026-03-06T00:02:43.557Z"}

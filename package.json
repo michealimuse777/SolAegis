@@ -18,6 +18,7 @@
     "@solana/spl-token": "^0.4.0",
     "@solana/spl-token-swap": "^0.4.4",
     "@solana/web3.js": "^1.95.0",
+    "@supabase/supabase-js": "^2.98.0",
     "bs58": "^5.0.0",
     "bullmq": "^5.0.0",
     "chalk": "^5.3.0",

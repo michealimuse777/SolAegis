@@ -40,9 +40,10 @@ export function defaultMemory(): AgentMemory {
 // ─────────── CRUD ───────────
 
 /**
- * Load agent memory from disk. Creates default if not found.
+ * Load agent memory. Tries Supabase first, then falls back to disk.
  */
 export function loadMemory(agentId: string): AgentMemory {
+    // Synchronous fallback (disk)
     try {
         const raw = fs.readFileSync(memoryPath(agentId), "utf-8");
         return JSON.parse(raw) as AgentMemory;
@@ -52,13 +53,43 @@ export function loadMemory(agentId: string): AgentMemory {
 }
 
 /**
- * Save agent memory to disk.
+ * Load memory async — prefers Supabase, falls back to disk.
+ */
+export async function loadMemoryAsync(agentId: string): Promise<AgentMemory> {
+    try {
+        const { loadMemoryFromDB } = await import("../services/supabaseStore.js");
+        const row = await loadMemoryFromDB(agentId);
+        if (row) {
+            return {
+                preferences: row.preferences as any || {},
+                notes: row.notes as any || [],
+                successfulActions: row.successful_actions as any || [],
+                lastFailures: row.last_failures as any || [],
+                lastUpdated: new Date(row.updated_at).getTime(),
+            };
+        }
+    } catch { }
+    return loadMemory(agentId);
+}
+
+/**
+ * Save agent memory to disk AND Supabase (dual-write).
  */
 export function saveMemory(agentId: string, memory: AgentMemory): void {
     const dir = path.join(DATA_ROOT, agentId);
     fs.mkdirSync(dir, { recursive: true });
     memory.lastUpdated = Date.now();
     fs.writeFileSync(memoryPath(agentId), JSON.stringify(memory, null, 2), "utf-8");
+
+    // Fire-and-forget Supabase write
+    import("../services/supabaseStore.js").then(({ saveMemoryToDB }) => {
+        saveMemoryToDB(agentId, {
+            preferences: memory.preferences,
+            notes: memory.notes,
+            successfulActions: memory.successfulActions,
+            lastFailures: memory.lastFailures,
+        }).catch(() => { });
+    }).catch(() => { });
 }
 
 /**

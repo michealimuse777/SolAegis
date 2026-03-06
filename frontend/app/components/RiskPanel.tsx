@@ -10,6 +10,7 @@ interface RiskPanelProps {
     schedules?: any[];
     history?: any[];
     onScheduleCmd?: (cmd: string) => void;
+    onRefresh?: () => void;
 }
 
 type Tab = "risk" | "schedule" | "history" | "memory" | "info";
@@ -22,13 +23,15 @@ const SCHEDULE_CMDS = [
     "send tokens every 12 hours",
 ];
 
-export default function RiskPanel({ config, agentName, agentAddress, schedules: _schedules, history: _history, onScheduleCmd }: RiskPanelProps) {
+export default function RiskPanel({ config, agentName, agentAddress, schedules: _schedules, history: _history, onScheduleCmd, onRefresh }: RiskPanelProps) {
     const [tab, setTab] = useState<Tab>("risk");
     const [memory, setMemory] = useState<any>(null);
     const [loadingMem, setLoadingMem] = useState(false);
     const [copied, setCopied] = useState(false);
-    const [liveSchedules, setLiveSchedules] = useState<any[]>([]);
-    const [liveHistory, setLiveHistory] = useState<any[]>([]);
+
+    // Use parent props directly
+    const liveSchedules = Array.isArray(_schedules) ? _schedules : [];
+    const liveHistory = Array.isArray(_history) ? _history : [];
 
     // Auth helper
     const authHeaders = (): Record<string, string> => {
@@ -38,35 +41,19 @@ export default function RiskPanel({ config, agentName, agentAddress, schedules: 
         return h;
     };
 
-    // Fetch memory when tab switches
+    // Fetch memory — poll every 10s while tab is active
     useEffect(() => {
-        if (tab === "memory" && agentName) {
+        if (tab !== "memory" || !agentName) return;
+        const fetchMemory = () => {
             setLoadingMem(true);
             fetch(`${API}/api/agents/${encodeURIComponent(agentName)}/memory`, { headers: authHeaders() })
                 .then(r => r.json())
                 .then(d => { setMemory(d); setLoadingMem(false); })
                 .catch(() => setLoadingMem(false));
-        }
-    }, [tab, agentName]);
-
-    // Fetch schedules when tab switches
-    useEffect(() => {
-        if (tab === "schedule" && agentName) {
-            fetch(`${API}/api/agents/${encodeURIComponent(agentName)}/schedules`, { headers: authHeaders() })
-                .then(r => r.json())
-                .then(d => { if (Array.isArray(d)) setLiveSchedules(d); })
-                .catch(() => { });
-        }
-    }, [tab, agentName]);
-
-    // Fetch history when tab switches
-    useEffect(() => {
-        if (tab === "history" && agentName) {
-            fetch(`${API}/api/agents/${encodeURIComponent(agentName)}/history`, { headers: authHeaders() })
-                .then(r => r.json())
-                .then(d => { if (Array.isArray(d)) setLiveHistory(d); })
-                .catch(() => { });
-        }
+        };
+        fetchMemory();
+        const interval = setInterval(fetchMemory, 10_000);
+        return () => clearInterval(interval);
     }, [tab, agentName]);
 
     const wipeMemory = async () => {
@@ -119,7 +106,18 @@ export default function RiskPanel({ config, agentName, agentAddress, schedules: 
                 {tab === "risk" && config && (
                     <>
                         <div>
-                            <p className="text-[9px] text-dim tracking-[0.15em] uppercase mb-2">Risk Mode</p>
+                            <div className="flex items-center justify-between mb-2">
+                                <p className="text-[9px] text-dim tracking-[0.15em] uppercase">Risk Mode</p>
+                                {onRefresh && (
+                                    <button
+                                        onClick={onRefresh}
+                                        className="text-[9px] text-dim hover:text-accent transition-colors cursor-pointer bg-transparent border-none uppercase tracking-wider flex items-center gap-1"
+                                        title="Refresh agent config"
+                                    >
+                                        <span className="inline-block hover:animate-spin">↻</span> Refresh
+                                    </button>
+                                )}
+                            </div>
                             <div className="flex items-center justify-between bg-bg/50 border border-border rounded-sm p-3">
                                 <span className="text-[13px] text-text font-semibold capitalize">{config.riskProfile || "Medium"}</span>
                                 <span className="text-[9px] text-accent border border-accent/20 px-1.5 py-0.5 rounded-sm font-semibold uppercase">Guarded</span>

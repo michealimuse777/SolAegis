@@ -61,6 +61,20 @@ export function auditLog(entry: Omit<AuditEntry, "timestamp" | "iso">): void {
     // Console output for visibility
     const emoji = full.status === "success" ? "✅" : full.status === "denied" ? "⛔" : full.status === "failed" ? "❌" : "⏰";
     console.log(`[Audit] ${emoji} ${full.agentId}/${full.action} → ${full.status}${full.reason ? ` (${full.reason})` : ""}${full.txSignature ? ` tx:${full.txSignature.slice(0, 8)}...` : ""}`);
+
+    // Fire-and-forget Supabase write
+    import("../services/supabaseStore.js").then(({ insertAuditLog }) => {
+        insertAuditLog({
+            agent_id: full.agentId,
+            user_id: full.userId,
+            action: full.action,
+            status: full.status,
+            tx_signature: full.txSignature,
+            reason: full.reason,
+            params: full.params,
+            ip: full.ip,
+        }).catch(() => { });
+    }).catch(() => { });
 }
 
 /**

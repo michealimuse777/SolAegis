@@ -69,6 +69,8 @@ export async function scheduleCronJob(
         repeat: { pattern: cronExpression },
         removeOnComplete: { count: 100 },
         removeOnFail: { count: 50 },
+        attempts: 3,
+        backoff: { type: "exponential", delay: 2000 },
     });
 
     console.log(
@@ -105,7 +107,7 @@ export async function scheduleDelayedJob(
 }
 
 /**
- * Create a worker that processes scheduled jobs.
+ * Create a worker that processes scheduled jobs with retry and timeout.
  */
 export function createWorker(
     processor: (data: CronJobData) => Promise<void>
@@ -118,18 +120,40 @@ export function createWorker(
     const worker = new Worker(
         "solaegis-agent-jobs",
         async (job) => {
-            console.log("[CronEngine] Processing job " + job.name + " for agent " + job.data.agentId);
-            await processor(job.data as CronJobData);
+            const startTime = Date.now();
+            console.log(`[CronEngine] Processing job ${job.name} for agent ${job.data.agentId} (attempt ${job.attemptsMade + 1})`);
+
+            // Wrap in a timeout
+            const timeout = new Promise<never>((_, reject) =>
+                setTimeout(() => reject(new Error("Job timed out after 30s")), 30_000)
+            );
+
+            try {
+                await Promise.race([
+                    processor(job.data as CronJobData),
+                    timeout,
+                ]);
+                const elapsed = Date.now() - startTime;
+                console.log(`[CronEngine] Job ${job.name} completed in ${elapsed}ms`);
+            } catch (err: any) {
+                const elapsed = Date.now() - startTime;
+                console.error(`[CronEngine] Job ${job.name} failed after ${elapsed}ms: ${err.message}`);
+                throw err; // BullMQ will retry based on config
+            }
         },
-        { connection: redisConnection }
+        {
+            connection: redisConnection,
+            concurrency: 3,
+            limiter: { max: 5, duration: 60_000 }, // Max 5 jobs per minute
+        }
     );
 
     worker.on("completed", (job) => {
-        console.log("[CronEngine] Job " + job.id + " completed");
+        console.log(`[CronEngine] ✅ Job ${job.id} completed`);
     });
 
     worker.on("failed", (job, err) => {
-        console.error("[CronEngine] Job " + (job?.id ?? "unknown") + " failed: " + err.message);
+        console.error(`[CronEngine] ❌ Job ${job?.id ?? "unknown"} failed (attempt ${job?.attemptsMade ?? "?"}): ${err.message}`);
     });
 
     return worker;

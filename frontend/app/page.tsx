@@ -1,5 +1,5 @@
 "use client";
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import Sidebar from "./components/Sidebar";
 import ExecutionStream from "./components/ExecutionStream";
 import RiskPanel from "./components/RiskPanel";
@@ -130,31 +130,41 @@ export default function Home() {
       if (res.ok) {
         const data = await res.json();
         const agentJobs = (Array.isArray(data) ? data : []).filter(
-          (j: any) => j.name?.startsWith(selectedAgent)
+          (j: any) => j.name?.includes(selectedAgent) || j.key?.includes(selectedAgent)
         );
         setSchedules(agentJobs);
       }
     } catch { setSchedules([]); }
   }, [token, selectedAgent]);
 
-  useEffect(() => {
-    if (selectedAgent) {
-      fetchSchedules();
-      fetchHistory();
-    }
-  }, [selectedAgent, fetchSchedules]);
-
   // ─── Fetch audit history for selected agent ───
   const fetchHistory = useCallback(async () => {
     if (!token || !selectedAgent) return;
     try {
-      const res = await fetch(`${API}/api/audit?agentId=${selectedAgent}&limit=20`, { headers: makeHeader(token) });
+      const res = await fetch(`${API}/api/agents/${encodeURIComponent(selectedAgent)}/audit`, { headers: makeHeader(token) });
       if (res.ok) {
         const data = await res.json();
-        setHistory(Array.isArray(data) ? data : []);
+        setHistory(Array.isArray(data) ? data.map((e: any) => ({
+          type: e.status === "success" ? "success" : e.status === "denied" ? "denied" : "failure",
+          action: e.action,
+          detail: e.txSignature ? `Tx: ${e.txSignature.slice(0, 12)}...` : e.reason || "completed",
+          timestamp: e.timestamp || Date.now(),
+        })) : []);
       }
     } catch { setHistory([]); }
   }, [token, selectedAgent]);
+
+  // Fetch on agent selection + auto-poll every 10s
+  useEffect(() => {
+    if (!selectedAgent) return;
+    fetchSchedules();
+    fetchHistory();
+    const interval = setInterval(() => {
+      fetchSchedules();
+      fetchHistory();
+    }, 10_000);
+    return () => clearInterval(interval);
+  }, [selectedAgent, fetchSchedules, fetchHistory]);
 
   // ─── Wallet Connect ───
   const connectWallet = async () => {
@@ -248,10 +258,34 @@ export default function Home() {
       });
       if (res.ok) {
         setShowCreateModal(false);
-        // Add deploy block directly to new agent's stream (not stale selectedAgent)
+
+        // Build welcome message — natural, conversational tone
+        const actionDescriptions: Record<string, string> = {
+          transfer: "send SOL to any wallet address",
+          swap: "trade tokens via Orca Whirlpools (SOL ↔ devUSDC)",
+          recover: "scan and close empty token accounts to reclaim rent",
+          scan_airdrops: "scan your wallet for airdropped tokens",
+          scam_check: "analyze tokens for scam indicators like freeze authority, supply concentration, and metadata",
+          airdrop: "request SOL from the devnet faucet",
+        };
+        const capabilities = data.allowedActions
+          .map(a => `• ${a.replace(/_/g, " ")}: ${actionDescriptions[a] || "custom action"}`)
+          .join("\n");
+
+        const welcomeMsg =
+          `🤖 Hey! I'm ${data.id}, your ${data.role} agent on Solana devnet.\n\n` +
+          `Here's what I can do for you:\n${capabilities}\n\n` +
+          `My current limits are set to ${data.maxSolPerTx} SOL per transaction and ${data.dailyTxLimit} transactions per day, with a medium risk profile.\n\n` +
+          `You can also configure me anytime — just say things like "change risk to high", "set max SOL to 2", or "set daily limit to 20" and I'll update myself.\n\n` +
+          `I can schedule tasks for you too (like "scan scams every 6 hours"), check market prices, and remember your preferences. Just ask!`;
+
+        // Add deploy block + welcome message to new agent's stream
         setAgentBlocks(prev => ({
           ...prev,
-          [data.id]: [newBlock("success", "AGENT DEPLOYED", `Agent "${data.id}" created with role: ${data.role}`)],
+          [data.id]: [
+            newBlock("success", "AGENT DEPLOYED", `Agent "${data.id}" created with role: ${data.role}`),
+            newBlock("system", "AGENT INTRO", welcomeMsg),
+          ],
         }));
         setSelectedAgent(data.id);
         fetchAgents();
@@ -290,7 +324,69 @@ export default function Home() {
     }));
   };
 
-  // ─── Send command ───
+  // ─── WebSocket connection for streaming ───
+  const wsRef = useRef<WebSocket | null>(null);
+  const streamResolverRef = useRef<((data: any) => void) | null>(null);
+  const streamTextRef = useRef("");
+
+  useEffect(() => {
+    const wsUrl = API.replace("http", "ws").replace(":4000", ":4001");
+    let ws: WebSocket;
+    let reconnectTimer: ReturnType<typeof setTimeout>;
+
+    const connect = () => {
+      ws = new WebSocket(wsUrl);
+      ws.onopen = () => { wsRef.current = ws; };
+      ws.onclose = () => {
+        wsRef.current = null;
+        reconnectTimer = setTimeout(connect, 3000);
+      };
+      ws.onerror = () => { ws.close(); };
+      ws.onmessage = (event) => {
+        try {
+          const msg = JSON.parse(event.data);
+
+          if (msg.type === "chat:chunk") {
+            streamTextRef.current += msg.text;
+            // Update the last block in-place for streaming effect
+            if (selectedAgentRef.current) {
+              const agentId = selectedAgentRef.current;
+              setAgentBlocks(prev => {
+                const blocks = [...(prev[agentId] || [])];
+                const lastIdx = blocks.length - 1;
+                if (lastIdx >= 0 && blocks[lastIdx].label === "STREAMING") {
+                  blocks[lastIdx] = { ...blocks[lastIdx], content: streamTextRef.current };
+                }
+                return { ...prev, [agentId]: blocks };
+              });
+            }
+          }
+
+          if (msg.type === "chat:done" && streamResolverRef.current) {
+            streamResolverRef.current(msg);
+            streamResolverRef.current = null;
+          }
+
+          if (msg.type === "chat:error" && streamResolverRef.current) {
+            streamResolverRef.current({ error: msg.error });
+            streamResolverRef.current = null;
+          }
+        } catch { }
+      };
+    };
+
+    connect();
+    return () => {
+      clearTimeout(reconnectTimer);
+      ws?.close();
+    };
+  }, []);
+
+  // Keep a ref to selectedAgent for WS callback
+  const selectedAgentRef = useRef(selectedAgent);
+  useEffect(() => { selectedAgentRef.current = selectedAgent; }, [selectedAgent]);
+
+  // ─── Send command (WS streaming with HTTP fallback) ───
   const sendCommand = async (message: string) => {
     if (!selectedAgent || !token) return;
 
@@ -298,6 +394,67 @@ export default function Home() {
     setParsing(true);
     setParsingStep("analyzing");
 
+    // Try WebSocket streaming first
+    if (wsRef.current?.readyState === WebSocket.OPEN) {
+      try {
+        setParsingStep("processing");
+        streamTextRef.current = "";
+
+        // Add an empty streaming block that will be updated in real-time
+        const agentId = selectedAgent;
+        setAgentBlocks(prev => ({
+          ...prev,
+          [agentId]: [...(prev[agentId] || []), newBlock("system", "STREAMING", "")],
+        }));
+
+        // Send via WS and wait for completion
+        wsRef.current.send(JSON.stringify({
+          type: "chat:stream",
+          agentId: selectedAgent,
+          message,
+        }));
+
+        const data: any = await new Promise((resolve) => {
+          streamResolverRef.current = resolve;
+          // Timeout after 45 seconds
+          setTimeout(() => {
+            if (streamResolverRef.current) {
+              streamResolverRef.current({ error: "Request timed out" });
+              streamResolverRef.current = null;
+            }
+          }, 45_000);
+        });
+
+        setParsing(false);
+        setParsingStep(null);
+
+        // Remove the streaming block and add the final one
+        setAgentBlocks(prev => {
+          const blocks = [...(prev[agentId] || [])];
+          const streamIdx = blocks.findIndex(b => b.label === "STREAMING");
+          if (streamIdx >= 0) blocks.splice(streamIdx, 1);
+          return { ...prev, [agentId]: blocks };
+        });
+
+        if (data.error) {
+          addBlock("error", "FAILED", data.error);
+          return;
+        }
+
+        const intent = data.intents?.[0];
+        const rawReply = data.reply || "";
+        const reply = formatReplyText(rawReply);
+
+        routeIntentToBlock(intent, reply, rawReply, data);
+        refreshAgentList();
+        return;
+
+      } catch {
+        // Fall through to HTTP
+      }
+    }
+
+    // ─── HTTP Fallback ───
     try {
       const res = await fetch(`${API}/api/agents/${selectedAgent}/chat`, {
         method: "POST",
@@ -305,7 +462,6 @@ export default function Home() {
         body: JSON.stringify({ message }),
       });
 
-      // Transition to "processing" step — hold for 800ms so user sees it
       setParsingStep("processing");
       const data = await res.json();
       await new Promise(r => setTimeout(r, 800));
@@ -315,93 +471,91 @@ export default function Home() {
 
       const intent = data.intent || data.intents?.[0];
       const rawReply = data.reply || data.error || "";
+      const reply = formatReplyText(rawReply);
 
-      // Helper: turn any reply into clean text (strip JSON & markdown)
-      const formatReply = (r: string): string => {
-        if (!r) return "No response";
-        try {
-          const parsed = JSON.parse(r);
-          if (parsed.action === "hold") return parsed.reason || "System is on hold — LLM keys may be exhausted.";
-          if (parsed.reason) return parsed.reason;
-          if (parsed.error) return parsed.error;
-          if (parsed.message) return parsed.message;
-          return Object.entries(parsed)
-            .filter(([, v]) => v !== null && v !== undefined)
-            .map(([k, v]) => `${k}: ${v}`)
-            .join("\n");
-        } catch {
-          // Strip markdown bold markers and unescape newlines
-          return r
-            .replace(/\*\*/g, "")
-            .replace(/\\n/g, "\n")
-            .replace(/^\s*-\s/gm, "• ")
-            .trim();
-        }
-      };
-
-      const reply = formatReply(rawReply);
-
-      // Refresh agent data (non-blocking — don't delay response)
-      fetch(`${API}/api/agents`, { headers: makeHeader(token) })
-        .then(r => r.json())
-        .then(list => { if (Array.isArray(list)) setAgents(list); })
-        .catch(() => { });
-
-      // Check for hold/fallback first
-      if (rawReply.includes('"action":"hold"') || rawReply.includes('"action": "hold"')) {
-        addBlock("warning", "SYSTEM HOLD", "LLM keys exhausted. Deterministic fallback active.\n\nTry explicit commands like:\n• swap 0.05 SOL to devUSDC\n• send 0.01 SOL to <address>\n• scan airdrops\n• what is my balance?");
-        return;
-      }
-
-      if (intent?.type === "execute_action" && intent.action) {
-        addBlock("parsed", "INTENT PARSED", [
-          `Action: ${intent.action}`,
-          intent.params ? Object.entries(intent.params).map(([k, v]) => `${k}: ${v}`).join(", ") : null,
-          `Risk: ${agents.find(a => a.id === selectedAgent)?.config?.riskProfile || "—"}`,
-        ].filter(Boolean).join("\n"), {
-          badge: `${intent.action}${intent.action === "swap" ? " → Orca" : ""}`,
-        });
-
-        if (data.executionResult?.success) {
-          const er = data.executionResult;
-          const details = [
-            er.signature ? `Tx: ${er.signature}` : null,
-            er.pool ? `Pool: ${er.pool}` : null,
-            er.route ? `Route: ${er.route}` : null,
-          ].filter(Boolean).join("\n");
-
-          addBlock("success", "EXECUTION CONFIRMED", reply, {
-            details: details || undefined,
-            confidence: 92,
-          });
-        } else if (reply.includes("denied") || reply.includes("⛔")) {
-          addBlock("error", "BLOCKED", reply);
-        } else {
-          addBlock("success", "RESULT", reply, { confidence: 88 });
-        }
-      } else if (intent?.type === "schedule" || intent?.type === "unschedule") {
-        addBlock("parsed", "SCHEDULE", `Action: ${intent.action}\nInterval: ${intent.interval || "—"}`, {
-          badge: intent.type,
-        });
-        addBlock("success", "SCHEDULE UPDATED", reply);
-      } else if (intent?.type === "unschedule") {
-        addBlock("success", "SCHEDULE REMOVED", reply);
-      } else if (intent?.type === "query_balance") {
-        addBlock("system", "WALLET BALANCE", reply);
-      } else if (intent?.type === "query_status") {
-        addBlock("system", "AGENT STATUS", reply);
-      } else if (intent?.type === "explain") {
-        addBlock("system", "CAPABILITIES", reply);
-      } else if (intent?.type === "update_config") {
-        addBlock("success", "CONFIG UPDATED", reply);
-      } else if (reply.includes("denied") || reply.includes("⛔")) {
-        addBlock("error", "BLOCKED", reply);
-      } else {
-        addBlock("system", "RESPONSE", reply);
-      }
+      routeIntentToBlock(intent, reply, rawReply, data);
+      refreshAgentList();
     } catch (err: any) {
       setParsing(false);
       addBlock("error", "FAILED", err.message || "Network error");
+    }
+  };
+
+  // ─── Helper: format reply text ───
+  const formatReplyText = (r: string): string => {
+    try {
+      const obj = typeof r === "string" ? JSON.parse(r) : r;
+      if (typeof obj === "object") {
+        if (obj.reply) return obj.reply;
+        if (obj.reason) return obj.reason;
+        return Object.entries(obj)
+          .filter(([, v]) => v !== null && v !== undefined)
+          .map(([k, v]) => `${k}: ${v}`)
+          .join("\n");
+      }
+    } catch { }
+    return r.replace(/\*\*/g, "").replace(/\\n/g, "\n").replace(/^\s*-\s/gm, "• ").trim();
+  };
+
+  // ─── Helper: refresh agent list non-blocking ───
+  const refreshAgentList = () => {
+    fetch(`${API}/api/agents`, { headers: makeHeader(token) })
+      .then(r => r.json())
+      .then(list => { if (Array.isArray(list)) setAgents(list); })
+      .catch(() => { });
+    fetchSchedules();
+    fetchHistory();
+  };
+
+  // ─── Helper: route intent to appropriate display block ───
+  const routeIntentToBlock = (intent: any, reply: string, rawReply: string, data: any) => {
+    // Check for hold/fallback
+    if (rawReply.includes('"action":"hold"') || rawReply.includes('"action": "hold"')) {
+      addBlock("warning", "SYSTEM HOLD", "LLM keys exhausted. Deterministic fallback active.\n\nTry explicit commands like:\n• swap 0.05 SOL to devUSDC\n• send 0.01 SOL to <address>\n• scan airdrops\n• what is my balance?");
+      return;
+    }
+
+    if (intent?.type === "execute_action" && intent.action) {
+      addBlock("parsed", "INTENT PARSED", [
+        `Action: ${intent.action}`,
+        intent.params ? Object.entries(intent.params).map(([k, v]) => `${k}: ${v}`).join(", ") : null,
+        `Risk: ${agents.find(a => a.id === selectedAgent)?.config?.riskProfile || "—"}`,
+      ].filter(Boolean).join("\n"), {
+        badge: `${intent.action}${intent.action === "swap" ? " → Orca" : ""}`,
+      });
+
+      if (data.executionResult?.success) {
+        const er = data.executionResult;
+        const details = [
+          er.signature ? `Tx: ${er.signature}` : null,
+          er.pool ? `Pool: ${er.pool}` : null,
+          er.route ? `Route: ${er.route}` : null,
+        ].filter(Boolean).join("\n");
+        addBlock("success", "EXECUTION CONFIRMED", reply, { details: details || undefined, confidence: 92 });
+      } else if (reply.includes("denied") || reply.includes("⛔")) {
+        addBlock("error", "BLOCKED", reply);
+      } else {
+        addBlock("success", "RESULT", reply, { confidence: 88 });
+      }
+    } else if (intent?.type === "schedule") {
+      addBlock("parsed", "SCHEDULE", `Action: ${intent.action}\nInterval: ${intent.interval || "—"}`, { badge: intent.type });
+      addBlock("success", "SCHEDULE UPDATED", reply);
+    } else if (intent?.type === "unschedule") {
+      addBlock("success", "SCHEDULE REMOVED", reply);
+    } else if (intent?.type === "query_balance") {
+      addBlock("system", "WALLET BALANCE", reply);
+    } else if (intent?.type === "market_query") {
+      addBlock("system", "MARKET DATA", reply);
+    } else if (intent?.type === "query_status") {
+      addBlock("system", "AGENT STATUS", reply);
+    } else if (intent?.type === "explain") {
+      addBlock("system", "CAPABILITIES", reply);
+    } else if (intent?.type === "update_config") {
+      addBlock("success", "CONFIG UPDATED", reply);
+    } else if (reply.includes("denied") || reply.includes("⛔")) {
+      addBlock("error", "BLOCKED", reply);
+    } else {
+      addBlock("system", "RESPONSE", reply);
     }
   };
 
@@ -531,6 +685,9 @@ export default function Home() {
           blocks={currentBlocks}
           agentName={selectedAgentData?.id}
           agentRole={selectedAgentData?.config?.role}
+          allowedActions={selectedAgentData?.config?.allowedActions}
+          maxSolPerTx={selectedAgentData?.config?.maxSolPerTx}
+          dailyTxLimit={selectedAgentData?.config?.dailyTxLimit}
           parsing={parsing}
           parsingStep={parsingStep}
           onTogglePanel={() => setShowPanel(p => !p)}
@@ -554,6 +711,7 @@ export default function Home() {
           schedules={schedules}
           history={history}
           onScheduleCmd={(cmd: string) => setPendingInput(cmd)}
+          onRefresh={() => fetchAgents()}
         />
       )}
 

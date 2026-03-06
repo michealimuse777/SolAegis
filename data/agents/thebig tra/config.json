@@ -1,18 +1,17 @@
 {
-  "role": "custom",
-  "maxSolPerTx": 5,
-  "dailyTxLimit": 6,
+  "role": "trader",
+  "maxSolPerTx": 0.5,
+  "dailyTxLimit": 2,
   "allowedActions": [
     "transfer",
     "swap",
-    "recover",
     "scan_airdrops",
-    "scam_check"
+    "scam_check",
+    "recover"
   ],
   "allowedPrograms": [
     "*"
   ],
   "riskProfile": "medium",
-  "createdAt": 1772572231729,
-  "dailyLimit": 2
+  "createdAt": 1772671666475
 }
