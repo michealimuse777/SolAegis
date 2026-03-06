@@ -9,7 +9,7 @@ import MobileAgentList from "./components/MobileAgentList";
 import MobileChatView from "./components/MobileChatView";
 import type { ExecutionBlockData } from "./components/ExecutionBlock";
 
-const API = "http://localhost:4000";
+const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000";
 
 // ─────────── Types ───────────
 
@@ -330,7 +330,7 @@ export default function Home() {
   const streamTextRef = useRef("");
 
   useEffect(() => {
-    const wsUrl = API.replace("http", "ws").replace(":4000", ":4001");
+    const wsUrl = process.env.NEXT_PUBLIC_WS_URL || API.replace("https://", "wss://").replace("http://", "ws://").replace(":4000", ":4001");
     let ws: WebSocket;
     let reconnectTimer: ReturnType<typeof setTimeout>;
 

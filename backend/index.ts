@@ -72,7 +72,10 @@ const policyEngine = new PolicyEngine();
 // ─────────── EXPRESS ───────────
 const app = express();
 app.disable("x-powered-by");            // Hide server fingerprint
-app.use(cors());
+app.use(cors({
+    origin: process.env.FRONTEND_URL || true,
+    credentials: true,
+}));
 app.use(express.json({ limit: "10kb" })); // Match payload guard
 
 // Security middleware

@@ -5,6 +5,7 @@
   "main": "backend/index.ts",
   "scripts": {
     "dev": "npx tsx backend/index.ts",
+    "start": "npx tsx backend/index.ts",
     "cli": "npx tsx cli/index.ts",
     "test": "npx tsx backend/test/harness.ts",
     "build": "tsc",
