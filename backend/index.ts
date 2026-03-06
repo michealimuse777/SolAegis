@@ -73,8 +73,23 @@ const policyEngine = new PolicyEngine();
 const app = express();
 app.disable("x-powered-by");            // Hide server fingerprint
 app.use(cors({
-    origin: process.env.FRONTEND_URL || true,
+    origin: (origin, callback) => {
+        // Allow requests with no origin (mobile apps, server-to-server, etc.)
+        if (!origin) return callback(null, true);
+        const allowed = process.env.FRONTEND_URL;
+        // Allow configured frontend URL, any vercel.app preview, and localhost for dev
+        if (!allowed
+            || origin === allowed
+            || origin.endsWith(".vercel.app")
+            || origin.includes("localhost")
+        ) {
+            return callback(null, true);
+        }
+        callback(new Error("CORS not allowed"));
+    },
     credentials: true,
+    methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
+    allowedHeaders: ["Content-Type", "Authorization"],
 }));
 app.use(express.json({ limit: "10kb" })); // Match payload guard
 
