@@ -15,11 +15,11 @@ export interface LLMResponse {
  */
 export class LLMManager {
     private currentKeyIndex = 0;
-    private maxRetries = 3;
+    private maxRetries = 6; // Try all keys (even if > 5) before giving up
 
     // Per-key error tracking for blacklisting
     private keyErrors: Map<number, { count: number; blacklistedUntil: number }> = new Map();
-    private readonly BLACKLIST_DURATION_MS = 60_000; // 1 minute blacklist after 3 consecutive failures
+    private readonly BLACKLIST_DURATION_MS = 120_000; // 2 min blacklist after consecutive failures
     private readonly MAX_KEY_ERRORS = 3;
 
     constructor(
