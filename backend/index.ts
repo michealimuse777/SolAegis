@@ -58,7 +58,7 @@ keyStore.loadFromEnv();
 const llmManager = new LLMManager(
     keyStore,
     process.env.LLM_PRIMARY_PROVIDER || "gemini",
-    process.env.LLM_PRIMARY_MODEL || "gemini-pro"
+    process.env.LLM_PRIMARY_MODEL || "gemini-2.0-flash"
 );
 const llmInterface = new LLMInterface(llmManager);
 const derMercist = new DerMercist(
