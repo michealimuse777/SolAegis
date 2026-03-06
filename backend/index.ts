@@ -1181,18 +1181,20 @@ async function start() {
     console.log("╚══════════════════════════════════════╝\n");
 
     // Init scheduler (graceful degradation — falls back to in-process timers)
-    await initScheduler(REDIS_URL);
+    const redisConnected = await initScheduler(REDIS_URL);
+    console.log(`[Server] Scheduler → ${redisConnected ? "Redis/BullMQ ✅" : "In-process fallback ⚠️ (Redis unavailable)"}`);
 
     // Register the job processor — works with both Redis (BullMQ) and in-process fallback
     createWorker(async (data) => {
         const agent = agentManager.get(data.agentId);
         if (!agent) {
             console.warn(`[Worker] Agent ${data.agentId} not found, skipping job`);
+            auditLog({ agentId: data.agentId, action: data.action || "unknown", status: "failed", reason: "Agent not found" });
             return;
         }
 
         const action = data.action || "dermercist";
-        console.log(`[Worker] Executing ${action} for agent ${data.agentId}`);
+        console.log(`[Worker] 🔄 Executing scheduled job: ${action} for agent ${data.agentId}`);
 
         try {
             let result: any = {};
@@ -1264,9 +1266,25 @@ async function start() {
             }
 
             broadcast("cron:executed", { agentId: data.agentId, ...result });
+            console.log(`[Worker] ✅ Scheduled job ${action} completed for agent ${data.agentId}`, result);
+            auditLog({
+                agentId: data.agentId,
+                action: `scheduled:${action}`,
+                status: "success",
+                txSignature: result.signature,
+                reason: `Scheduled ${action} executed successfully`,
+            });
+            recordSuccess(data.agentId, `scheduled:${action}`, result.signature ? `Tx: ${result.signature.slice(0, 12)}...` : "completed");
         } catch (err: any) {
-            console.error(`[Worker] ${action} failed for ${data.agentId}:`, err.message);
+            console.error(`[Worker] ❌ Scheduled job ${action} failed for ${data.agentId}:`, err.message);
             broadcast("cron:failed", { agentId: data.agentId, action, error: err.message });
+            auditLog({
+                agentId: data.agentId,
+                action: `scheduled:${action}`,
+                status: "failed",
+                reason: err.message,
+            });
+            recordFailure(data.agentId, `scheduled:${action}`, err.message);
         }
     });
 
