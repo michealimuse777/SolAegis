@@ -75,14 +75,29 @@ export default function MobileSettingsDrawer({ open, onClose, agentName, agentAd
                         <span className="text-[10px] text-dim">{schedules?.length || 0} active</span>
                     </button>
                     {expanded === "schedule" && (
-                        <div className="px-4 pb-3 space-y-1.5 fade-in">
+                        <div className="px-4 pb-3 space-y-2 fade-in">
+                            {/* Active scheduled jobs */}
+                            {(!schedules || schedules.length === 0) ? (
+                                <p className="text-[11px] text-dim italic">No scheduled jobs.</p>
+                            ) : schedules.map((s: any, i: number) => (
+                                <div key={i} className="flex items-center justify-between px-3 py-2 border border-border rounded-sm bg-bg/40">
+                                    <div>
+                                        <span className="text-[11px] text-accent font-mono">{s.action || s.name || "task"}</span>
+                                        <span className="text-[9px] text-dim ml-2">{s.interval || s.cron || ""}</span>
+                                    </div>
+                                    <span className="text-[8px] text-[#16C784] uppercase font-semibold">Active</span>
+                                </div>
+                            ))}
+
+                            {/* Quick add buttons */}
+                            <p className="text-[9px] text-dim uppercase tracking-wider mt-2">Quick Add</p>
                             {["scan scams every 6 hours", "check airdrops every hour", "recover rent daily"].map(cmd => (
                                 <button
                                     key={cmd}
                                     onClick={() => { onScheduleCmd?.(cmd); onClose(); }}
                                     className="w-full text-left text-[11px] text-muted px-3 py-2 border border-border rounded-sm cursor-pointer bg-transparent active:bg-elevated/50"
                                 >
-                                    {cmd}
+                                    + {cmd}
                                 </button>
                             ))}
                         </div>

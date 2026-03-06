@@ -94,6 +94,35 @@ export default function ExecutionBlock({ block }: { block: ExecutionBlockData })
     }
 
     // Agent / system messages: left-aligned
+    // Detect Solana addresses/tx hashes and render as clickable explorer links
+    function renderContent(text: string) {
+        const parts = text.split(/([1-9A-HJ-NP-Za-km-z]{32,88})/g);
+        if (parts.length === 1) return text;
+
+        return parts.map((part, i) => {
+            if (/^[1-9A-HJ-NP-Za-km-z]{32,88}$/.test(part)) {
+                const isLikelyTx = part.length > 60;
+                const url = isLikelyTx
+                    ? `https://explorer.solana.com/tx/${part}?cluster=devnet`
+                    : `https://explorer.solana.com/address/${part}?cluster=devnet`;
+                const display = `${part.slice(0, 8)}···${part.slice(-4)}`;
+                return (
+                    <a
+                        key={i}
+                        href={url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-[#00E0FF] hover:underline font-mono text-[11px] inline-flex items-center gap-0.5"
+                        title={part}
+                    >
+                        {display} <span className="text-[9px] opacity-60">↗</span>
+                    </a>
+                );
+            }
+            return part;
+        });
+    }
+
     return (
         <div className={`${blockBg[block.type]} ${accentBorder[block.type]} rounded-md px-4 py-3 block-enter`}>
             {/* Header: small icon + dimmed label + time — metadata row */}
@@ -117,9 +146,9 @@ export default function ExecutionBlock({ block }: { block: ExecutionBlockData })
             )}
 
             {/* Content — sans-serif for conversation, mono only for data */}
-            <div className={`text-[13px] leading-relaxed text-[#E6EDF3]/90 whitespace-pre-wrap ${isUser ? "font-medium" : ""}`}
+            <div className={`text-[13px] leading-relaxed text-[#E6EDF3]/90 whitespace-pre-wrap break-all ${isUser ? "font-medium" : ""}`}
                 style={{ fontFamily: isDataText(block.content) ? "'JetBrains Mono', 'Fira Code', monospace" : "'Inter', 'Segoe UI', system-ui, sans-serif" }}>
-                {block.content}
+                {renderContent(block.content)}
             </div>
 
             {/* Confidence bar — slimmer */}

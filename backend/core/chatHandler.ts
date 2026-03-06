@@ -371,12 +371,17 @@ Intent types:
 - "unschedule": User wants to STOP/CANCEL a scheduled action. Must include action field.
 - "update_config": User wants to change agent settings (risk profile, daily limit, role)
 - "reload_skills": User wants agent to reload its SKILLS.md
-- "query_status": User asks about balance, status, portfolio, or history
+- "query_status": User EXPLICITLY asks for agent status, settings, or portfolio overview ("show status", "what are my settings")
 - "remember": User wants agent to remember a preference or note. Store in params.preference (key:value) or params.note (string)
 - "market_query": User asks about SOL price, market conditions, or trends
-- "capability_check": User asks if the agent CAN do something ("can you bridge?", "do you support X?", "can you trade ETH?"). Include the requested capability in params.capability
-- "explain": User asks what the agent CAN do, its config, or general capabilities ("what can you do?", "what are your capabilities?")
-- "unknown": General conversation, questions, or unclear intent
+- "capability_check": User asks about something the agent CANNOT do or an UNKNOWN feature ("can you bridge to Ethereum?", "do you support staking?", "can you do NFTs?"). NEVER use this for supported actions like transfer, swap, scan, recover.
+- "explain": User asks for a FULL LIST of capabilities ("what can you do?", "list your capabilities")
+- "unknown": General conversation, questions, greetings, help requests, or unclear intent. Use this for casual questions like "can you help me transfer SOL?" — respond conversationally, NOT with a capability dump.
+
+CRITICAL RULES:
+- If the user says "can you help me [supported action]" or "help me [supported action]", classify as "unknown" so the agent responds conversationally with guidance. Do NOT use capability_check for supported actions.
+- If user says "transfer SOL in X hours" or "swap in X hours", this is a DELAY, not an immediate execute_action. Always use type: "delay".
+- query_status should ONLY trigger for explicit status requests. For questions like "show my balance" use query_balance instead.
 
 Format (always return an array):
 [
