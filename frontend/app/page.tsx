@@ -751,27 +751,53 @@ export default function Home() {
 
       {/* CENTER: Execution Stream + Command Input */}
       <div className="flex flex-col flex-1 min-w-0">
-        <ExecutionStream
-          blocks={currentBlocks}
-          agentName={selectedAgentData?.id}
-          agentRole={selectedAgentData?.config?.role}
-          allowedActions={selectedAgentData?.config?.allowedActions}
-          maxSolPerTx={selectedAgentData?.config?.maxSolPerTx}
-          dailyTxLimit={selectedAgentData?.config?.dailyTxLimit}
-          parsing={parsing}
-          parsingStep={parsingStep}
-          onTogglePanel={() => setShowPanel(p => !p)}
-          showPanel={showPanel}
-        />
-        <CommandInput
-          onSend={sendCommand}
-          loading={parsing}
-          allowedActions={selectedAgentData?.config?.allowedActions}
-          pendingInput={pendingInput}
-          onPendingClear={() => setPendingInput("")}
-        />
-        {agents.length >= 2 && (
-          <MultiAgentDemo agents={agents} token={token} apiUrl={API} />
+        {selectedAgent ? (
+          <>
+            <ExecutionStream
+              blocks={currentBlocks}
+              agentName={selectedAgentData?.id}
+              agentRole={selectedAgentData?.config?.role}
+              allowedActions={selectedAgentData?.config?.allowedActions}
+              maxSolPerTx={selectedAgentData?.config?.maxSolPerTx}
+              dailyTxLimit={selectedAgentData?.config?.dailyTxLimit}
+              parsing={parsing}
+              parsingStep={parsingStep}
+              onTogglePanel={() => setShowPanel(p => !p)}
+              showPanel={showPanel}
+            />
+            <CommandInput
+              onSend={sendCommand}
+              loading={parsing}
+              allowedActions={selectedAgentData?.config?.allowedActions}
+              pendingInput={pendingInput}
+              onPendingClear={() => setPendingInput("")}
+            />
+          </>
+        ) : (
+          <div style={{ flex: 1, display: "flex", flexDirection: "column", justifyContent: "center", padding: "40px 32px", overflowY: "auto" }}>
+            <div style={{ textAlign: "center", marginBottom: "32px" }}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: "8px", marginBottom: "8px" }}>
+                <div style={{ width: "10px", height: "10px", borderRadius: "50%", background: "#00e0ff", boxShadow: "0 0 12px rgba(0,224,255,0.5)" }} />
+                <h1 style={{ fontSize: "20px", fontWeight: 600, color: "#e0e0e0", margin: 0 }}>SolAegis Dashboard</h1>
+              </div>
+              <p style={{ fontSize: "12px", color: "#666", margin: 0 }}>
+                Select an agent from the sidebar to chat, or run the multi-agent demo below
+              </p>
+            </div>
+            {agents.length >= 2 ? (
+              <MultiAgentDemo agents={agents} token={token} apiUrl={API} />
+            ) : (
+              <div style={{ textAlign: "center", color: "#555", fontSize: "13px" }}>
+                <p>Create at least 2 agents to unlock the Multi-Agent Demo</p>
+                <button
+                  onClick={() => setShowCreateModal(true)}
+                  style={{ padding: "8px 24px", background: "#00e0ff", color: "#0a0a0a", border: "none", borderRadius: "6px", fontSize: "12px", fontWeight: 600, cursor: "pointer", marginTop: "12px" }}
+                >
+                  + Create Agent
+                </button>
+              </div>
+            )}
+          </div>
         )}
       </div>
 
