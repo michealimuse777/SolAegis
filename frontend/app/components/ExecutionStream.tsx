@@ -12,6 +12,7 @@ interface ExecutionStreamProps {
     parsing?: boolean;
     parsingStep?: "analyzing" | "processing" | null;
     onTogglePanel?: () => void;
+    onBackToDashboard?: () => void;
     showPanel?: boolean;
 }
 
@@ -22,7 +23,7 @@ const ACTION_ICONS: Record<string, string> = {
     scan_airdrops: "📡", airdrop: "💧", balance: "💰",
 };
 
-export default function ExecutionStream({ blocks, agentName, agentRole, allowedActions, maxSolPerTx, dailyTxLimit, parsing, parsingStep, onTogglePanel, showPanel }: ExecutionStreamProps) {
+export default function ExecutionStream({ blocks, agentName, agentRole, allowedActions, maxSolPerTx, dailyTxLimit, parsing, parsingStep, onTogglePanel, onBackToDashboard, showPanel }: ExecutionStreamProps) {
     const endRef = useRef<HTMLDivElement>(null);
     const [solPrice, setSolPrice] = useState<{ price: number; change: number; trend: string } | null>(null);
 
@@ -79,6 +80,17 @@ export default function ExecutionStream({ blocks, agentName, agentRole, allowedA
                                 className="hidden md:inline text-[10px] text-dim hover:text-accent cursor-pointer bg-transparent border-none uppercase tracking-wider transition-colors"
                             >
                                 {showPanel ? "◁ Panel" : "▷ Panel"}
+                            </button>
+                        </>
+                    )}
+                    {onBackToDashboard && (
+                        <>
+                            <span className="hidden md:inline text-border">·</span>
+                            <button
+                                onClick={onBackToDashboard}
+                                className="text-[10px] text-dim hover:text-accent cursor-pointer bg-transparent border-none uppercase tracking-wider transition-colors"
+                            >
+                                ◈ Dashboard
                             </button>
                         </>
                     )}

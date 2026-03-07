@@ -697,6 +697,11 @@ export default function Home() {
             walletAddress={walletAddress}
             onDisconnect={disconnect}
           />
+          {agents.length >= 2 && (
+            <div style={{ padding: "12px 16px", background: "#0a0a0a" }}>
+              <MultiAgentDemo agents={agents} token={token} apiUrl={API} />
+            </div>
+          )}
           {showCreateModal && (
             <AgentCreateModal
               onClose={() => setShowCreateModal(false)}
@@ -763,6 +768,7 @@ export default function Home() {
               parsing={parsing}
               parsingStep={parsingStep}
               onTogglePanel={() => setShowPanel(p => !p)}
+              onBackToDashboard={() => setSelectedAgent(null)}
               showPanel={showPanel}
             />
             <CommandInput
