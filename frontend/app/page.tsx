@@ -689,27 +689,27 @@ export default function Home() {
     if (!selectedAgent) {
       return (
         <div style={{ height: "100vh", display: "flex", flexDirection: "column", background: "#0a0a0a" }}>
-          {/* Mobile Header — matches sidebar branding */}
-          <div style={{ padding: "16px 20px", borderBottom: "1px solid rgba(255,255,255,0.06)", background: "rgba(20,20,20,0.95)" }}>
+          {/* Mobile Header — compact branded */}
+          <div style={{ padding: "10px 16px", borderBottom: "1px solid rgba(255,255,255,0.06)", background: "rgba(20,20,20,0.95)" }}>
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-              <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-                <svg width="20" height="24" viewBox="0 0 48 56" fill="none" style={{ flexShrink: 0, filter: "drop-shadow(0 0 4px rgba(0,224,255,0.3))" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                <svg width="16" height="19" viewBox="0 0 48 56" fill="none" style={{ flexShrink: 0, filter: "drop-shadow(0 0 3px rgba(0,224,255,0.25))" }}>
                   <path d="M24 2L4 12v16c0 14.4 8.5 24.2 20 28 11.5-3.8 20-13.6 20-28V12L24 2z" stroke="url(#mGrad)" strokeWidth="3" fill="rgba(0,224,255,0.08)" />
                   <circle cx="24" cy="26" r="5" fill="#00e0ff" opacity="0.8" />
                   <defs><linearGradient id="mGrad" x1="4" y1="2" x2="44" y2="56"><stop offset="0%" stopColor="#00e0ff" /><stop offset="100%" stopColor="#0060ff" /></linearGradient></defs>
                 </svg>
                 <div>
-                  <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-                    <span style={{ fontSize: "16px", fontWeight: 700, color: "#e8e8e8" }}>Sol<span style={{ color: "#00e0ff" }}>Aegis</span></span>
-                    <span style={{ fontSize: "7px", padding: "1.5px 5px", borderRadius: "3px", background: "rgba(0,255,200,0.08)", border: "1px solid rgba(0,255,200,0.35)", color: "rgba(0,255,200,0.85)", letterSpacing: "0.12em", textTransform: "uppercase" as const, fontWeight: 700 }}>Devnet</span>
+                  <div style={{ display: "flex", alignItems: "center", gap: "5px" }}>
+                    <span style={{ fontSize: "14px", fontWeight: 700, color: "#e8e8e8" }}>Sol<span style={{ color: "#00e0ff" }}>Aegis</span></span>
+                    <span style={{ fontSize: "6px", padding: "1px 4px", borderRadius: "2px", background: "rgba(0,255,200,0.08)", border: "1px solid rgba(0,255,200,0.3)", color: "rgba(0,255,200,0.8)", letterSpacing: "0.1em", textTransform: "uppercase" as const, fontWeight: 700 }}>Devnet</span>
                   </div>
-                  <p style={{ fontSize: "9px", color: "rgba(255,255,255,0.3)", letterSpacing: "0.15em", textTransform: "uppercase" as const, margin: "2px 0 0" }}>Agent Execution Core</p>
+                  <p style={{ fontSize: "8px", color: "rgba(255,255,255,0.25)", letterSpacing: "0.12em", textTransform: "uppercase" as const, margin: "1px 0 0" }}>Agent Execution Core</p>
                 </div>
               </div>
               {walletAddress && (
-                <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                  <span style={{ fontSize: "10px", fontFamily: "monospace", color: "#666" }}>{walletAddress.slice(0, 4)}···{walletAddress.slice(-4)}</span>
-                  <button onClick={disconnect} style={{ fontSize: "14px", color: "#666", background: "none", border: "none", cursor: "pointer" }}>×</button>
+                <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                  <span style={{ fontSize: "9px", fontFamily: "monospace", color: "#555" }}>{walletAddress.slice(0, 4)}···{walletAddress.slice(-4)}</span>
+                  <button onClick={disconnect} style={{ fontSize: "12px", color: "#555", background: "none", border: "none", cursor: "pointer", padding: 0 }}>×</button>
                 </div>
               )}
             </div>
