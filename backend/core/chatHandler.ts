@@ -307,8 +307,8 @@ export class ChatHandler {
                     return { type: "delay", action: "swap", delay: delayStr, params: { amount: swapDelay[1], from: swapDelay[2].toUpperCase(), to: swapDelay[3] } };
                 }
 
-                // Transfer with delay: "send 0.1 SOL to ABC123 in 6 hours"
-                const transferDelay = actionPart.match(/(?:send|transfer|pay)\s+([\d.]+)\s+(\w+)\s+to\s+([A-Za-z0-9]{20,})/i);
+                // Transfer with delay: "send 0.1 SOL to ABC123 in 6 hours" or "send 0.1 SOL to TraderBot in 6 hours"
+                const transferDelay = actionPart.match(/(?:send|transfer|pay)\s+([\d.]+)\s+(\w+)\s+to\s+([A-Za-z0-9_]+)/i);
                 if (transferDelay) {
                     return { type: "delay", action: "transfer", delay: delayStr, params: { amount: transferDelay[1], token: transferDelay[2].toUpperCase(), to: transferDelay[3] } };
                 }
@@ -335,7 +335,8 @@ export class ChatHandler {
         }
 
         // Transfer (immediate — no time qualifier detected above)
-        const transferMatch = msg.match(/(?:send|transfer|pay)\s+([\d.]+)\s+(\w+)\s+to\s+([A-Za-z0-9]{20,})/i);
+        // Accepts both wallet addresses (20+ chars) and agent names (e.g. "TraderBot")
+        const transferMatch = msg.match(/(?:send|transfer|pay)\s+([\d.]+)\s+(\w+)\s+to\s+([A-Za-z0-9_]+)/i);
         if (transferMatch) {
             return { type: "execute_action", action: "transfer", params: { amount: transferMatch[1], token: transferMatch[2].toUpperCase(), to: transferMatch[3] } };
         }

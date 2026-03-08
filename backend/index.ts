@@ -279,19 +279,35 @@ app.post("/api/agents/:id/chat", chatRateLimiter as any, async (req: Authenticat
                     }
                     // Handle transfer-sol
                     else if (action === "transfer" && params.to && params.amount) {
+                        // Resolve agent name → wallet address
+                        let targetAddress = params.to;
+                        if (targetAddress.length < 20) {
+                            // Looks like an agent name, not a wallet address — resolve it
+                            const allAgents = await agentManager.listStates();
+                            const targetAgent = (Array.isArray(allAgents) ? allAgents : []).find(
+                                (a: any) => a.id.toLowerCase() === targetAddress.toLowerCase()
+                            );
+                            if (targetAgent?.publicKey) {
+                                targetAddress = targetAgent.publicKey;
+                                executedReplies.push(`📍 Resolved agent "${params.to}" → ${targetAddress.slice(0, 8)}…`);
+                            } else {
+                                executedReplies.push(`❌ Agent "${params.to}" not found. Use a wallet address or valid agent name.`);
+                                break;
+                            }
+                        }
                         const keypair = agent.getKeypair();
                         const { Transaction, SystemProgram, LAMPORTS_PER_SOL } = await import("@solana/web3.js");
                         const lamports = Math.round(parseFloat(params.amount) * LAMPORTS_PER_SOL);
                         const tx = new Transaction().add(
                             SystemProgram.transfer({
                                 fromPubkey: keypair.publicKey,
-                                toPubkey: new PublicKey(params.to),
+                                toPubkey: new PublicKey(targetAddress),
                                 lamports,
                             }),
                         );
                         const sig = await connection.sendTransaction(tx, [keypair]);
                         await connection.confirmTransaction(sig, "confirmed");
-                        executedReplies.push(`✅ Transferred ${params.amount} SOL to \`${params.to}\`. Tx: ${sig}`);
+                        executedReplies.push(`✅ Transferred ${params.amount} SOL to ${params.to.length < 20 ? `agent "${params.to}"` : `\`${params.to}\``}. Tx: ${sig}`);
                         response.executionResult = { success: true, action: "transfer", signature: sig };
                     }
                     // Handle recover — AUTO-SCAN (no tokenAccount needed)
@@ -1470,10 +1486,21 @@ async function start() {
                                         executedReplies.push(`✅ Airdropped 1 SOL. New balance: ${balance.toFixed(4)} SOL`);
                                         response.executionResult = { success: true, action: "airdrop", signature: sig };
                                     } else if (action === "transfer" && params.to && params.amount) {
+                                        // Resolve agent name → wallet address
+                                        let targetAddress = params.to;
+                                        if (targetAddress.length < 20) {
+                                            const allAgents = await agentManager.listStates();
+                                            const targetAgent = (Array.isArray(allAgents) ? allAgents : []).find(
+                                                (a: any) => a.id.toLowerCase() === targetAddress.toLowerCase()
+                                            );
+                                            if (targetAgent?.publicKey) {
+                                                targetAddress = targetAgent.publicKey;
+                                            }
+                                        }
                                         const keypair = agent.getKeypair();
                                         const { Transaction: Tx, SystemProgram, LAMPORTS_PER_SOL } = await import("@solana/web3.js");
                                         const lamports = Math.round(parseFloat(params.amount) * LAMPORTS_PER_SOL);
-                                        const tx = new Tx().add(SystemProgram.transfer({ fromPubkey: keypair.publicKey, toPubkey: new PublicKey(params.to), lamports }));
+                                        const tx = new Tx().add(SystemProgram.transfer({ fromPubkey: keypair.publicKey, toPubkey: new PublicKey(targetAddress), lamports }));
                                         const sig = await connection.sendTransaction(tx, [keypair]);
                                         await connection.confirmTransaction(sig, "confirmed");
                                         executedReplies.push(`✅ Transferred ${params.amount} SOL to \`${params.to}\`. Tx: ${sig}`);
