@@ -20,7 +20,7 @@ const QUICK_ACTIONS = [
 
 const PLACEHOLDERS = [
     'Try: "Swap 1 SOL for USDC and scan for scams"',
-    'Try: "Airdrop me SOL and check my balance"',
+    'Try: "Check my balance and scan airdrops"',
     'Try: "Schedule scam check every 6 hours"',
     'Try: "Transfer 0.5 SOL to my hardware wallet"',
     'Try: "What can you do?"',

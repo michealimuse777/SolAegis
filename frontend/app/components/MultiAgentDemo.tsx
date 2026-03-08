@@ -21,7 +21,6 @@ const PRESET_COMMANDS = [
   { label: "Recover Rent", value: "recover unused accounts", icon: "🧹" },
   { label: "Check Balance", value: "what is my balance?", icon: "💰" },
   { label: "Scan Airdrops", value: "scan airdrops", icon: "📡" },
-  { label: "Airdrop SOL", value: "airdrop me some SOL", icon: "💧" },
   { label: "Schedule: Scam Check 6h", value: "scan for scams every 6 hours", icon: "⏰" },
   { label: "Custom…", value: "__custom__", icon: "✏️" },
 ];
