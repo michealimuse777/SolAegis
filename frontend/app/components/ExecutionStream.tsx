@@ -150,7 +150,7 @@ export default function ExecutionStream({ blocks, agentName, agentRole, allowedA
                                 </div>
                             </div>
 
-                            <p className="text-[10px] text-dim mt-5 italic">Type a command or click ⚡ for quick actions</p>
+                            <p className="text-[10px] text-dim mt-5 italic">Type a command or click the lightning icon for quick actions</p>
                         </div>
                     </div>
                 )}
