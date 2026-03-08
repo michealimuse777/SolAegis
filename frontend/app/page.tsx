@@ -688,27 +688,90 @@ export default function Home() {
     // Mobile: Agent List (no agent selected) or Chat View (agent selected)
     if (!selectedAgent) {
       return (
-        <>
-          <MobileAgentList
-            agents={agents}
-            agentBlocks={agentBlocks}
-            onSelectAgent={setSelectedAgent}
-            onNewAgent={() => setShowCreateModal(true)}
-            walletAddress={walletAddress}
-            onDisconnect={disconnect}
-          />
-          {agents.length >= 2 && (
-            <div style={{ padding: "12px 16px", background: "#0a0a0a" }}>
-              <MultiAgentDemo agents={agents} token={token} apiUrl={API} />
+        <div style={{ height: "100vh", display: "flex", flexDirection: "column", background: "#0a0a0a" }}>
+          {/* Mobile Header — matches sidebar branding */}
+          <div style={{ padding: "16px 20px", borderBottom: "1px solid rgba(255,255,255,0.06)", background: "rgba(20,20,20,0.95)" }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                <svg width="20" height="24" viewBox="0 0 48 56" fill="none" style={{ flexShrink: 0, filter: "drop-shadow(0 0 4px rgba(0,224,255,0.3))" }}>
+                  <path d="M24 2L4 12v16c0 14.4 8.5 24.2 20 28 11.5-3.8 20-13.6 20-28V12L24 2z" stroke="url(#mGrad)" strokeWidth="3" fill="rgba(0,224,255,0.08)" />
+                  <circle cx="24" cy="26" r="5" fill="#00e0ff" opacity="0.8" />
+                  <defs><linearGradient id="mGrad" x1="4" y1="2" x2="44" y2="56"><stop offset="0%" stopColor="#00e0ff" /><stop offset="100%" stopColor="#0060ff" /></linearGradient></defs>
+                </svg>
+                <div>
+                  <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                    <span style={{ fontSize: "16px", fontWeight: 700, color: "#e8e8e8" }}>Sol<span style={{ color: "#00e0ff" }}>Aegis</span></span>
+                    <span style={{ fontSize: "7px", padding: "1.5px 5px", borderRadius: "3px", background: "rgba(0,255,200,0.08)", border: "1px solid rgba(0,255,200,0.35)", color: "rgba(0,255,200,0.85)", letterSpacing: "0.12em", textTransform: "uppercase" as const, fontWeight: 700 }}>Devnet</span>
+                  </div>
+                  <p style={{ fontSize: "9px", color: "rgba(255,255,255,0.3)", letterSpacing: "0.15em", textTransform: "uppercase" as const, margin: "2px 0 0" }}>Agent Execution Core</p>
+                </div>
+              </div>
+              {walletAddress && (
+                <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                  <span style={{ fontSize: "10px", fontFamily: "monospace", color: "#666" }}>{walletAddress.slice(0, 4)}···{walletAddress.slice(-4)}</span>
+                  <button onClick={disconnect} style={{ fontSize: "14px", color: "#666", background: "none", border: "none", cursor: "pointer" }}>×</button>
+                </div>
+              )}
             </div>
-          )}
+          </div>
+
+          {/* Scrollable Content: Agents + Demo */}
+          <div style={{ flex: 1, overflowY: "auto" }}>
+            {/* Agent List */}
+            {agents.map(agent => {
+              const blocks = agentBlocks[agent.id] || [];
+              const lastBlock = blocks[blocks.length - 1];
+              const lastMsg = lastBlock ? lastBlock.content.slice(0, 60) : "No activity yet";
+              const lastTime = lastBlock
+                ? new Date(lastBlock.timestamp).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })
+                : "";
+              const icon = ({ trader: "⚡", monitor: "◉", recovery: "⟲" } as Record<string, string>)[agent.config?.role] || "◆";
+
+              return (
+                <div
+                  key={agent.id}
+                  onClick={() => setSelectedAgent(agent.id)}
+                  style={{ display: "flex", alignItems: "center", gap: "12px", padding: "14px 20px", borderBottom: "1px solid rgba(255,255,255,0.04)", cursor: "pointer" }}
+                >
+                  <div style={{ width: "40px", height: "40px", borderRadius: "50%", background: "rgba(255,255,255,0.04)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "18px", flexShrink: 0 }}>
+                    {icon}
+                  </div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ display: "flex", justifyContent: "space-between" }}>
+                      <span style={{ fontSize: "13px", fontWeight: 500, color: "#e0e0e0" }}>{agent.id}</span>
+                      <span style={{ fontSize: "9px", fontFamily: "monospace", color: "#555" }}>{lastTime}</span>
+                    </div>
+                    <p style={{ fontSize: "11px", color: "#666", margin: "2px 0 0", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{lastMsg}</p>
+                  </div>
+                  <span style={{ color: "#444", fontSize: "14px", flexShrink: 0 }}>›</span>
+                </div>
+              );
+            })}
+
+            {/* Create Agent */}
+            <button
+              onClick={() => setShowCreateModal(true)}
+              style={{ width: "100%", display: "flex", alignItems: "center", gap: "12px", padding: "14px 20px", borderBottom: "1px solid rgba(255,255,255,0.04)", background: "none", border: "none", cursor: "pointer", textAlign: "left" }}
+            >
+              <div style={{ width: "40px", height: "40px", borderRadius: "50%", border: "1px solid rgba(0,224,255,0.3)", display: "flex", alignItems: "center", justifyContent: "center", color: "#00e0ff", fontSize: "18px", flexShrink: 0 }}>+</div>
+              <span style={{ fontSize: "13px", color: "#00e0ff", fontWeight: 500 }}>Create New Agent</span>
+            </button>
+
+            {/* Multi-Agent Demo */}
+            {agents.length >= 2 && (
+              <div style={{ padding: "16px" }}>
+                <MultiAgentDemo agents={agents} token={token} apiUrl={API} />
+              </div>
+            )}
+          </div>
+
           {showCreateModal && (
             <AgentCreateModal
               onClose={() => setShowCreateModal(false)}
               onCreate={createAgent}
             />
           )}
-        </>
+        </div>
       );
     }
 
