@@ -207,10 +207,11 @@ Capabilities include:
 
 Wallets are used to execute operations such as:
 - token swaps
-- SOL transfers
+- SOL and SPL transfers
 - token account management
 - airdrop requests
-- account recovery
+- solana recovery
+- scam tokens check
 
 All transactions are executed automatically by the agent.
 
