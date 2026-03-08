@@ -24,12 +24,17 @@ interface SidebarProps {
     onDisconnect: () => void;
 }
 
-const roleIcon: Record<string, string> = {
-    trader: "⚡",
-    monitor: "◉",
-    recovery: "⟲",
-    custom: "◆",
-};
+function RoleIcon({ role, size = 14 }: { role: string; size?: number }) {
+    if (role === "trader") {
+        return (
+            <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="#00e0ff" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" style={{ opacity: 0.75 }}>
+                <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" />
+            </svg>
+        );
+    }
+    const icons: Record<string, string> = { monitor: "◉", recovery: "⟲", custom: "◆" };
+    return <>{icons[role] || "◆"}</>;
+}
 
 export default function Sidebar({
     agents, selectedAgent, onSelectAgent, onDeleteAgent, onNewAgent, walletAddress, onDisconnect,
@@ -140,7 +145,7 @@ export default function Sidebar({
                                 }
               `}
                         >
-                            <span className="text-sm opacity-60">{roleIcon[agent.config?.role] || "◆"}</span>
+                            <RoleIcon role={agent.config?.role || "custom"} />
                             <div className="flex-1 min-w-0">
                                 <div className="text-[11px] font-medium text-text truncate">{agent.id}</div>
                                 <div className="text-[9px] font-mono text-dim tabular-nums">

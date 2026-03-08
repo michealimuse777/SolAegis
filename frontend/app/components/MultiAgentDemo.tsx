@@ -134,7 +134,7 @@ export default function MultiAgentDemo({
           if (intent?.type) {
             const intentLabel = intent.type === "schedule" ? `⏰ Schedule: ${intent.action} every ${intent.interval}`
               : intent.type === "delay" ? `⏳ Delay: ${intent.action} in ${intent.delay}`
-              : `📋 ${intent.type}${intent.action ? ` → ${intent.action}` : ""}`;
+                : `📋 ${intent.type}${intent.action ? ` → ${intent.action}` : ""}`;
             addLog(agentId, "result", intentLabel);
           }
 
@@ -187,14 +187,7 @@ export default function MultiAgentDemo({
           <button
             onClick={runDemo}
             disabled={running || selectedAgentIds.size < 1}
-            style={{
-              padding: "8px 20px",
-              background: running ? "#333" : selectedAgentIds.size < 1 ? "#222" : "linear-gradient(135deg, #00e0ff 0%, #0090ff 100%)",
-              color: running || selectedAgentIds.size < 1 ? "#666" : "#0a0a0a",
-              border: "none", borderRadius: "6px", fontSize: "12px", fontWeight: 600,
-              cursor: running || selectedAgentIds.size < 1 ? "not-allowed" : "pointer",
-              textTransform: "uppercase", letterSpacing: "0.05em",
-            }}
+            className="btn-execute px-5 py-2.5 bg-accent rounded-sm text-[11px] font-semibold text-bg uppercase tracking-wider hover:bg-accent-hover transition-all disabled:opacity-30 disabled:shadow-none cursor-pointer border-none"
           >
             {running ? "Running…" : allDone ? "Run Again" : `Run ${selectedAgentIds.size} Agent${selectedAgentIds.size !== 1 ? "s" : ""}`}
           </button>
@@ -279,7 +272,7 @@ export default function MultiAgentDemo({
                       value={currentCmd || ""}
                       onChange={e => setCommand(agent.id, e.target.value)}
                       style={{
-                        width: "100%", padding: "5px 8px", fontSize: "11px",
+                        width: "100%", padding: "5px 8px", fontSize: "16px",
                         background: "#1a1a1a", color: "#ccc", border: "1px solid rgba(255,255,255,0.1)",
                         borderRadius: "4px", outline: "none",
                       }}
@@ -296,7 +289,7 @@ export default function MultiAgentDemo({
                         value={customInputs[agent.id] || ""}
                         onChange={e => setCustomInputs(prev => ({ ...prev, [agent.id]: e.target.value }))}
                         style={{
-                          width: "100%", padding: "5px 8px", fontSize: "11px", marginTop: "4px",
+                          width: "100%", padding: "5px 8px", fontSize: "16px", marginTop: "4px",
                           background: "#111", color: "#e0e0e0", border: "1px solid rgba(0,224,255,0.2)",
                           borderRadius: "4px", outline: "none", boxSizing: "border-box",
                         }}

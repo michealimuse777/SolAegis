@@ -17,9 +17,17 @@ interface MobileAgentListProps {
     onDisconnect: () => void;
 }
 
-const roleIcon: Record<string, string> = {
-    trader: "⚡", monitor: "◉", recovery: "⟲", custom: "◆",
-};
+function RoleIcon({ role, size = 18 }: { role: string; size?: number }) {
+    if (role === "trader") {
+        return (
+            <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="#00e0ff" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" style={{ opacity: 0.75 }}>
+                <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" />
+            </svg>
+        );
+    }
+    const icons: Record<string, string> = { monitor: "◉", recovery: "⟲", custom: "◆" };
+    return <>{icons[role] || "◆"}</>;
+}
 
 export default function MobileAgentList({ agents, agentBlocks, onSelectAgent, onNewAgent, walletAddress, onDisconnect }: MobileAgentListProps) {
     return (
@@ -60,7 +68,7 @@ export default function MobileAgentList({ agents, agentBlocks, onSelectAgent, on
                             className="flex items-center gap-3 px-5 py-3.5 border-b border-border active:bg-elevated/50 cursor-pointer transition-colors"
                         >
                             <div className="w-10 h-10 rounded-full bg-elevated flex items-center justify-center text-lg flex-shrink-0">
-                                {roleIcon[agent.config?.role] || "◆"}
+                                <RoleIcon role={agent.config?.role || "custom"} />
                             </div>
                             <div className="flex-1 min-w-0">
                                 <div className="flex items-center justify-between">

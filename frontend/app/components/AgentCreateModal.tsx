@@ -12,12 +12,20 @@ interface AgentCreateModalProps {
     }) => void;
 }
 
+function TraderIcon() {
+    return (
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#00e0ff" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" />
+        </svg>
+    );
+}
+
 const ROLES = [
-    { key: "trader", icon: "⚡", label: "Trader", desc: "Swap, transfer & scam detection" },
+    { key: "trader", icon: "⚡", label: "Trader", desc: "Swap, transfer & scam detection", svgIcon: true },
     { key: "monitor", icon: "◉", label: "Monitor", desc: "Read-only scanning & safety checks" },
     { key: "recovery", icon: "⟲", label: "Recovery", desc: "Reclaim rent from empty accounts" },
     { key: "custom", icon: "◆", label: "Custom", desc: "Fully configurable" },
-];
+] as { key: string; icon: string; label: string; desc: string; svgIcon?: boolean }[];
 
 const ROLE_DEFAULTS: Record<string, { maxSol: number; daily: number; actions: string[] }> = {
     trader: { maxSol: 0.5, daily: 10, actions: ["transfer", "swap", "scan_airdrops", "scam_check", "recover"] },
@@ -70,7 +78,7 @@ export default function AgentCreateModal({ onClose, onCreate }: AgentCreateModal
                             onKeyDown={e => e.key === "Enter" && handleCreate()}
                             placeholder="e.g. TraderOne, Scout"
                             autoFocus
-                            className="w-full bg-bg/80 border border-border rounded-sm px-4 py-2.5 text-[12px] font-mono text-text placeholder:text-dim focus:outline-none focus:border-accent/40 focus:shadow-[0_0_8px_rgba(0,224,255,0.06)] transition-all"
+                            className="w-full bg-bg/80 border border-border rounded-sm px-4 py-2.5 text-[16px] md:text-[12px] font-mono text-text placeholder:text-dim focus:outline-none focus:border-accent/40 focus:shadow-[0_0_8px_rgba(0,224,255,0.06)] transition-all"
                         />
                     </div>
 
@@ -83,12 +91,12 @@ export default function AgentCreateModal({ onClose, onCreate }: AgentCreateModal
                                     key={r.key}
                                     onClick={() => setRole(r.key)}
                                     className={`card-hover p-3 rounded-sm border text-left cursor-pointer bg-transparent transition-all duration-200 ${role === r.key
-                                            ? "border-accent/30 bg-accent/5 shadow-[0_0_12px_rgba(0,224,255,0.04)]"
-                                            : "border-border"
+                                        ? "border-accent/30 bg-accent/5 shadow-[0_0_12px_rgba(0,224,255,0.04)]"
+                                        : "border-border"
                                         }`}
                                 >
                                     <div className="flex items-center gap-2">
-                                        <span className="text-sm">{r.icon}</span>
+                                        <span className="text-sm">{r.svgIcon ? <TraderIcon /> : r.icon}</span>
                                         <span className={`text-[11px] font-semibold ${role === r.key ? "text-accent" : "text-muted"}`}>
                                             {r.label}
                                         </span>

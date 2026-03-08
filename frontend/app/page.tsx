@@ -642,9 +642,23 @@ export default function Home() {
         <div className="text-center space-y-8 slide-up">
           {/* Branding */}
           <div>
-            <div className="flex items-center justify-center gap-2.5 mb-2">
-              <div className="w-2.5 h-2.5 rounded-full bg-accent shadow-[0_0_12px_rgba(0,224,255,0.5)]" />
-              <h1 className="text-2xl font-semibold text-text tracking-tight">SolAegis</h1>
+            <div className="flex flex-col items-center justify-center gap-4 mb-2">
+              {/* Shield Logo */}
+              <svg width="48" height="56" viewBox="0 0 48 56" fill="none" style={{ display: "block", filter: "drop-shadow(0 0 20px rgba(0,224,255,0.3))" }}>
+                <path d="M24 2L4 12v16c0 14.4 8.5 24.2 20 28 11.5-3.8 20-13.6 20-28V12L24 2z" stroke="url(#loginShieldGrad)" strokeWidth="2.5" fill="rgba(0,224,255,0.06)" />
+                <path d="M24 14l-10 5v8c0 7.2 4.25 12.1 10 14 5.75-1.9 10-6.8 10-14v-8L24 14z" fill="rgba(0,224,255,0.1)" stroke="rgba(0,224,255,0.3)" strokeWidth="1" />
+                <circle cx="24" cy="28" r="4" fill="#00e0ff" opacity="0.9" />
+                <circle cx="24" cy="28" r="7" fill="none" stroke="rgba(0,224,255,0.25)" strokeWidth="1" strokeDasharray="3 3">
+                  <animateTransform attributeName="transform" type="rotate" from="0 24 28" to="360 24 28" dur="8s" repeatCount="indefinite" />
+                </circle>
+                <defs>
+                  <linearGradient id="loginShieldGrad" x1="4" y1="2" x2="44" y2="56">
+                    <stop offset="0%" stopColor="#00e0ff" />
+                    <stop offset="100%" stopColor="#0060ff" />
+                  </linearGradient>
+                </defs>
+              </svg>
+              <h1 className="text-2xl font-semibold text-text tracking-tight">Sol<span style={{ color: "#00e0ff" }}>Aegis</span></h1>
             </div>
             <p className="text-[10px] text-dim tracking-[0.25em] uppercase">
               Autonomous Execution Infrastructure
@@ -725,7 +739,7 @@ export default function Home() {
               const lastTime = lastBlock
                 ? new Date(lastBlock.timestamp).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })
                 : "";
-              const icon = ({ trader: "⚡", monitor: "◉", recovery: "⟲" } as Record<string, string>)[agent.config?.role] || "◆";
+              const icon = agent.config?.role === "trader" ? null : ({ monitor: "◉", recovery: "⟲" } as Record<string, string>)[agent.config?.role] || "◆";
 
               return (
                 <div
@@ -734,7 +748,11 @@ export default function Home() {
                   style={{ display: "flex", alignItems: "center", gap: "12px", padding: "14px 20px", borderBottom: "1px solid rgba(255,255,255,0.04)", cursor: "pointer" }}
                 >
                   <div style={{ width: "40px", height: "40px", borderRadius: "50%", background: "rgba(255,255,255,0.04)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "18px", flexShrink: 0 }}>
-                    {icon}
+                    {agent.config?.role === "trader" ? (
+                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#00e0ff" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" style={{ opacity: 0.75 }}>
+                        <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" />
+                      </svg>
+                    ) : icon}
                   </div>
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ display: "flex", justifyContent: "space-between" }}>
