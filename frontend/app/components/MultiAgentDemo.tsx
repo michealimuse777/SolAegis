@@ -23,7 +23,6 @@ const PRESET_COMMANDS = [
   { label: "Scan Airdrops", value: "scan airdrops", icon: "📡" },
   { label: "Airdrop SOL", value: "airdrop me some SOL", icon: "💧" },
   { label: "Schedule: Scam Check 6h", value: "scan for scams every 6 hours", icon: "⏰" },
-  { label: "Schedule: Balance 1h", value: "check balance every hour", icon: "⏰" },
   { label: "Custom…", value: "__custom__", icon: "✏️" },
 ];
 
@@ -167,10 +166,13 @@ export default function MultiAgentDemo({
   return (
     <div style={{ maxWidth: "900px", margin: "0 auto", width: "100%" }}>
       {/* Header */}
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "16px", flexWrap: "wrap", gap: "8px" }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: "32px", marginBottom: "16px", flexWrap: "wrap", gap: "8px" }}>
         <div>
-          <h2 style={{ fontSize: "15px", fontWeight: 600, color: "#e0e0e0", margin: 0 }}>
-            ⚡ Multi-Agent Control Center
+          <h2 style={{ fontSize: "15px", fontWeight: 600, color: "#e0e0e0", margin: 0, display: "flex", alignItems: "center", gap: "8px" }}>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#00e0ff" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" />
+            </svg>
+            Multi-Agent Control Center
           </h2>
           <p style={{ fontSize: "11px", color: "#666", margin: "4px 0 0" }}>
             Select agents, assign commands, and execute simultaneously

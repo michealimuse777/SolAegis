@@ -337,21 +337,34 @@ app.post("/api/agents/:id/chat", chatRateLimiter as any, async (req: Authenticat
                             response.executionResult = { success: true, action: "recover", signature: sig, recovered: batch.length };
                         }
                     }
-                    // Handle scan_airdrops
+                    // Handle scan_airdrops — directly scan token accounts
                     else if (action === "scan_airdrops") {
-                        const result = await agent.execute({ action: "scan_airdrops" as any, params: {} });
-                        if (result.success) {
-                            const airdrops = result.data || [];
-                            if (airdrops.length === 0) {
-                                executedReplies.push("📊 Scan complete. No airdrop-eligible tokens found in your wallet.");
-                            } else {
-                                const summary = airdrops.map((a: any) => `• ${a.mint || a.name || "token"}: ${a.amount || a.balance || "?"}`).join("\n");
-                                executedReplies.push(`📊 Scan complete. Found **${airdrops.length}** token(s):\n${summary}`);
-                            }
+                        const keypair = agent.getKeypair();
+                        const { TOKEN_PROGRAM_ID } = await import("@solana/spl-token");
+                        const tokenAccounts = await connection.getParsedTokenAccountsByOwner(
+                            keypair.publicKey, { programId: TOKEN_PROGRAM_ID }
+                        );
+
+                        const tokens = tokenAccounts.value
+                            .map((ta: any) => {
+                                const info = ta.account.data.parsed.info;
+                                return {
+                                    mint: info.mint,
+                                    balance: info.tokenAmount.uiAmount || 0,
+                                    decimals: info.tokenAmount.decimals,
+                                };
+                            })
+                            .filter((t: any) => t.balance > 0);
+
+                        if (tokens.length === 0) {
+                            executedReplies.push("📡 Scan complete. No airdropped or held tokens found in this wallet.\n\n💡 Tip: Try `airdrop me some SOL` then `swap 0.01 SOL to USDC` to get some tokens.");
                         } else {
-                            executedReplies.push(`❌ Scan failed: ${result.error}`);
+                            const summary = tokens.map((t: any) =>
+                                `• \`${t.mint.slice(0, 8)}…${t.mint.slice(-4)}\` — **${t.balance}** (${t.decimals} decimals)`
+                            ).join("\n");
+                            executedReplies.push(`📡 Found **${tokens.length}** token(s) in wallet:\n\n${summary}`);
                         }
-                        response.executionResult = result;
+                        response.executionResult = { success: true, action: "scan_airdrops", data: tokens };
                     }
                     // Handle scam_check — token safety analysis
                     else if (action === "scam_check") {

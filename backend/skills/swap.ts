@@ -35,8 +35,11 @@ const DEVNET_WHIRLPOOLS_CONFIG = new PublicKey("FcrweFY1G9HJAHG5inkGB6pKg1HZ6x9U
 export const DEVNET_TOKENS: Record<string, { mint: string; decimals: number; name: string }> = {
     SOL: { mint: "So11111111111111111111111111111111111111112", decimals: 9, name: "SOL" },
     devUSDC: { mint: "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU", decimals: 6, name: "devUSDC" },
+    USDC: { mint: "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU", decimals: 6, name: "devUSDC" },
     devUSDT: { mint: "H9gBUDs5KnAXGPXrYsRsdkQ7sAfhDjQXiMVt5G5cMiee", decimals: 6, name: "devUSDT" },
+    USDT: { mint: "H9gBUDs5KnAXGPXrYsRsdkQ7sAfhDjQXiMVt5G5cMiee", decimals: 6, name: "devUSDT" },
     devSAMO: { mint: "Jd4M8bfJG3sAkd82RkGRyRBSiS2XscMB4SSCQU2hLk2X", decimals: 9, name: "devSAMO" },
+    SAMO: { mint: "Jd4M8bfJG3sAkd82RkGRyRBSiS2XscMB4SSCQU2hLk2X", decimals: 9, name: "devSAMO" },
     devTMAC: { mint: "Afn8YB1p4NsoZeWC1GPhsUGQ5ys4VrB9ojNZ6aQ5pump", decimals: 6, name: "devTMAC" },
 };
 
