@@ -347,11 +347,11 @@ export class ChatHandler {
         // Status
         if (msg.match(/\b(status|info)\b/) && !msg.match(/balance/)) return { type: "query_status" };
 
-        // Airdrop
-        if (msg.match(/\b(airdrop|fund me|give me sol|get sol)\b/)) return { type: "execute_action", action: "airdrop", params: {} };
+        // Scan airdrops — MUST come before generic "airdrop" to avoid false match
+        if (msg.match(/\b(scan airdrop|check airdrop|scan for airdrop)/)) return { type: "execute_action", action: "scan_airdrops", params: {} };
 
-        // Scan airdrops
-        if (msg.match(/\b(scan airdrop|check airdrop)/)) return { type: "execute_action", action: "scan_airdrops", params: {} };
+        // Airdrop (faucet) — only if NOT preceded by "scan" or "check"
+        if (msg.match(/\b(airdrop|fund me|give me sol|get sol)\b/) && !msg.match(/\b(scan|check)\s+(for\s+)?airdrop/)) return { type: "execute_action", action: "airdrop", params: {} };
 
         // Scam check
         if (msg.match(/\b(scam|rug|safety|check token)/)) return { type: "execute_action", action: "scam_check", params: {} };

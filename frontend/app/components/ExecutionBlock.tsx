@@ -146,8 +146,8 @@ export default function ExecutionBlock({ block }: { block: ExecutionBlockData })
             )}
 
             {/* Content — sans-serif for conversation, mono only for data */}
-            <div className={`text-[13px] leading-relaxed text-[#E6EDF3]/90 whitespace-pre-wrap break-all ${isUser ? "font-medium" : ""}`}
-                style={{ fontFamily: isDataText(block.content) ? "'JetBrains Mono', 'Fira Code', monospace" : "'Inter', 'Segoe UI', system-ui, sans-serif" }}>
+            <div className={`text-[13px] leading-relaxed text-[#E6EDF3]/90 whitespace-pre-wrap break-words ${isUser ? "font-medium" : ""}`}
+                style={{ fontFamily: isDataText(block.content) ? "'JetBrains Mono', 'Fira Code', monospace" : "'Inter', 'Segoe UI', system-ui, sans-serif", overflowWrap: "break-word", wordBreak: "break-word" }}>
                 {renderContent(block.content)}
             </div>
 

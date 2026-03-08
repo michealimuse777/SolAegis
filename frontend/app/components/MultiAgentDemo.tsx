@@ -143,7 +143,7 @@ export default function MultiAgentDemo({
             addLog(agentId, "result", `✅ Done${sig ? ` · ${sig.slice(0, 12)}…` : ""}`);
           } else {
             const reply = data.reply || "";
-            addLog(agentId, "result", reply.length > 100 ? reply.slice(0, 100) + "…" : reply || "✅ OK");
+            addLog(agentId, "result", reply.length > 200 ? reply.slice(0, 200) + "…" : reply || "✅ Done");
           }
 
           setCompleted(prev => new Set([...prev, agentId]));
