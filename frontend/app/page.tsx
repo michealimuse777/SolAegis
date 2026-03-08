@@ -781,13 +781,37 @@ export default function Home() {
           </>
         ) : (
           <div style={{ flex: 1, display: "flex", flexDirection: "column", justifyContent: "center", padding: "40px 32px", overflowY: "auto" }}>
-            <div style={{ textAlign: "center", marginBottom: "32px" }}>
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: "8px", marginBottom: "8px" }}>
-                <div style={{ width: "10px", height: "10px", borderRadius: "50%", background: "#00e0ff", boxShadow: "0 0 12px rgba(0,224,255,0.5)" }} />
-                <h1 style={{ fontSize: "20px", fontWeight: 600, color: "#e0e0e0", margin: 0 }}>SolAegis Dashboard</h1>
+            <div style={{ textAlign: "center", marginBottom: "40px" }}>
+              {/* Shield Logo */}
+              <div style={{ marginBottom: "16px" }}>
+                <svg width="48" height="56" viewBox="0 0 48 56" fill="none" style={{ margin: "0 auto", display: "block", filter: "drop-shadow(0 0 20px rgba(0,224,255,0.3))" }}>
+                  <path d="M24 2L4 12v16c0 14.4 8.5 24.2 20 28 11.5-3.8 20-13.6 20-28V12L24 2z" stroke="url(#shieldGrad)" strokeWidth="2.5" fill="rgba(0,224,255,0.06)" />
+                  <path d="M24 14l-10 5v8c0 7.2 4.25 12.1 10 14 5.75-1.9 10-6.8 10-14v-8L24 14z" fill="rgba(0,224,255,0.1)" stroke="rgba(0,224,255,0.3)" strokeWidth="1" />
+                  <circle cx="24" cy="28" r="4" fill="#00e0ff" opacity="0.9" />
+                  <circle cx="24" cy="28" r="7" fill="none" stroke="rgba(0,224,255,0.25)" strokeWidth="1" strokeDasharray="3 3">
+                    <animateTransform attributeName="transform" type="rotate" from="0 24 28" to="360 24 28" dur="8s" repeatCount="indefinite" />
+                  </circle>
+                  <defs>
+                    <linearGradient id="shieldGrad" x1="4" y1="2" x2="44" y2="56">
+                      <stop offset="0%" stopColor="#00e0ff" />
+                      <stop offset="100%" stopColor="#0060ff" />
+                    </linearGradient>
+                  </defs>
+                </svg>
               </div>
-              <p style={{ fontSize: "12px", color: "#666", margin: 0 }}>
-                Select an agent from the sidebar to chat, or run the multi-agent demo below
+              {/* Title */}
+              <h1 style={{ fontSize: "32px", fontWeight: 700, color: "#e8e8e8", margin: "0 0 6px", letterSpacing: "-0.02em" }}>
+                Sol<span style={{ color: "#00e0ff" }}>Aegis</span>
+              </h1>
+              {/* Subtitle */}
+              <p style={{ fontSize: "13px", color: "rgba(255,255,255,0.4)", margin: "0 0 24px", letterSpacing: "0.15em", textTransform: "uppercase", fontWeight: 500 }}>
+                AI Agent Execution Dashboard
+              </p>
+              {/* Divider */}
+              <div style={{ width: "60px", height: "1px", background: "linear-gradient(90deg, transparent, rgba(0,224,255,0.3), transparent)", margin: "0 auto 16px" }} />
+              {/* Hint */}
+              <p style={{ fontSize: "12px", color: "#555", margin: 0 }}>
+                Select an agent to chat · or run the multi-agent demo below
               </p>
             </div>
             {agents.length >= 2 ? (

@@ -45,27 +45,57 @@ export default function Sidebar({
       border-b md:border-b-0 md:border-r border-border
       overflow-x-auto md:overflow-x-hidden md:overflow-y-auto
     ">
-            <div className="hidden md:block px-5 pt-6 pb-4 border-b border-border">
-                <div className="flex items-center gap-2">
-                    <div className="w-2 h-2 rounded-full bg-accent shadow-[0_0_8px_rgba(0,224,255,0.4)]" />
-                    <h1 className="text-[15px] font-semibold tracking-tight text-text">SolAegis</h1>
-                    <span className="text-[7px] text-warning-text border border-warning/30 rounded-sm px-1 py-px tracking-[0.1em] uppercase font-semibold">
-                        Devnet
-                    </span>
+            <div className="hidden md:block px-5 pt-5 pb-4 border-b border-border">
+                <div className="flex items-center gap-2.5 mb-1">
+                    {/* Shield Logo */}
+                    <svg width="22" height="26" viewBox="0 0 48 56" fill="none" style={{ flexShrink: 0, filter: "drop-shadow(0 0 6px rgba(0,224,255,0.35))" }}>
+                        <path d="M24 2L4 12v16c0 14.4 8.5 24.2 20 28 11.5-3.8 20-13.6 20-28V12L24 2z" stroke="url(#sbGrad)" strokeWidth="3" fill="rgba(0,224,255,0.08)" />
+                        <circle cx="24" cy="26" r="5" fill="#00e0ff" opacity="0.8" />
+                        <defs>
+                            <linearGradient id="sbGrad" x1="4" y1="2" x2="44" y2="56">
+                                <stop offset="0%" stopColor="#00e0ff" />
+                                <stop offset="100%" stopColor="#0060ff" />
+                            </linearGradient>
+                        </defs>
+                    </svg>
+                    <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2">
+                            <h1 className="text-[15px] font-bold tracking-tight text-text" style={{ letterSpacing: "-0.01em" }}>
+                                Sol<span style={{ color: "#00e0ff" }}>Aegis</span>
+                            </h1>
+                            <span style={{
+                                fontSize: "7px",
+                                padding: "1.5px 5px",
+                                borderRadius: "3px",
+                                background: "rgba(0,255,200,0.08)",
+                                border: "1px solid rgba(0,255,200,0.35)",
+                                color: "rgba(0,255,200,0.85)",
+                                letterSpacing: "0.12em",
+                                textTransform: "uppercase" as const,
+                                fontWeight: 700,
+                                boxShadow: "0 0 8px rgba(0,255,200,0.1)",
+                            }}>
+                                Devnet
+                            </span>
+                        </div>
+                        <p className="text-[9px] text-dim tracking-[0.15em] uppercase" style={{ opacity: 0.5, marginTop: "2px" }}>
+                            Agent Execution Core
+                        </p>
+                    </div>
                 </div>
-                <p className="text-[9px] text-dim mt-1.5 tracking-[0.2em] uppercase pl-4">
-                    Execution Core
-                </p>
             </div>
 
             {/* Wallet */}
             {walletAddress && (
                 <div className="hidden md:flex px-5 py-2.5 border-b border-border items-center justify-between">
-                    <div className="flex items-center gap-1.5">
-                        <div className="w-1.5 h-1.5 rounded-full bg-success" />
-                        <span className="text-[10px] font-mono text-muted">
-                            {walletAddress.slice(0, 4)}···{walletAddress.slice(-4)}
-                        </span>
+                    <div className="flex flex-col gap-0.5">
+                        <span className="text-[8px] text-dim tracking-[0.15em] uppercase" style={{ opacity: 0.5 }}>Connected</span>
+                        <div className="flex items-center gap-1.5">
+                            <div className="w-1.5 h-1.5 rounded-full bg-success" style={{ boxShadow: "0 0 6px rgba(34,197,94,0.4)" }} />
+                            <span className="text-[10px] font-mono text-muted">
+                                {walletAddress.slice(0, 4)}···{walletAddress.slice(-4)}
+                            </span>
+                        </div>
                     </div>
                     <button
                         onClick={onDisconnect}
