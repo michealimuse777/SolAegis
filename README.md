@@ -6,11 +6,10 @@
 <p align="center"><strong>Autonomous Agentic Wallet Infrastructure for AI Agents on Solana</strong></p>
 
 <p align="center">
-  <a href="https://sol-aegis.vercel.app">Live Dashboard</a> •
-  <a href="https://github.com/michealimuse777/SolAegis">GitHub</a> •
-  <a href="#demo">Demo</a> •
-  <a href="SECURITY.md">Security Architecture</a> •
-  <a href="ARCHITECTURE.md">Architecture</a>
+  <a href="https://sol-aegis.vercel.app"><img src="https://img.shields.io/badge/Live_Dashboard-00e0ff?style=for-the-badge&logo=vercel&logoColor=black" alt="Live Dashboard" /></a>
+  <a href="https://youtu.be/nP5UZOYYeWM?si=ARQLzi4OKpEzQ7ce"><img src="https://img.shields.io/badge/Demo_Video-FF0000?style=for-the-badge&logo=youtube&logoColor=white" alt="Demo Video" /></a>
+  <a href="SECURITY.md"><img src="https://img.shields.io/badge/Security-1a1a2e?style=for-the-badge&logo=hackthebox&logoColor=00e0ff" alt="Security" /></a>
+  <a href="ARCHITECTURE.md"><img src="https://img.shields.io/badge/Architecture-1a1a2e?style=for-the-badge&logo=blueprint&logoColor=00e0ff" alt="Architecture" /></a>
 </p>
 
 ---
