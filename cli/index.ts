@@ -17,9 +17,8 @@ dotenv.config();
 
 import { Command } from "commander";
 
-const { createRequire } = await import("module");
-const require = createRequire(import.meta.url);
-const chalk = require("chalk");
+const chalkModule = await import("chalk");
+const chalk = chalkModule.default;
 
 const API_URL = process.env.API_URL || `http://localhost:${process.env.PORT || 4000}/api`;
 let AUTH_TOKEN: string | null = null;
@@ -77,7 +76,7 @@ auth.command("login")
     .action(async (opts) => {
         try {
             const data = await api("POST", "/auth/login", {
-                username: opts.username,
+                userId: opts.username,
                 password: opts.password,
             });
             AUTH_TOKEN = data.token;
@@ -96,7 +95,7 @@ auth.command("register")
     .action(async (opts) => {
         try {
             const data = await api("POST", "/auth/register", {
-                username: opts.username,
+                userId: opts.username,
                 password: opts.password,
             });
             console.log(chalk.green(`  ✓ Registered: ${data.user?.id || opts.username}\n`));
@@ -156,7 +155,7 @@ agents.command("create")
     .action(async (opts) => {
         try {
             const data = await api("POST", "/agents", {
-                name: opts.name,
+                id: opts.name,
                 role: opts.role,
                 riskProfile: opts.risk,
             });

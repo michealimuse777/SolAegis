@@ -1,383 +1,329 @@
-# SolAegis
+<p align="center">
+  <img src="docs/shield-logo.svg" width="80" alt="SolAegis Logo" />
+</p>
 
-**Autonomous Agentic Wallet Platform for Solana AI Agents**
+<h1 align="center">SolAegis</h1>
+<p align="center"><strong>Autonomous Agentic Wallet Infrastructure for AI Agents on Solana</strong></p>
 
-SolAegis is an agentic wallet system for autonomous AI agents on Solana where users create intelligent agents that monitor, analyze, and execute on-chain actions through natural language.
-
-Each AI agent controls its own wallet, manages funds, and executes on-chain actions independently while operating under strict security policies.
-
-Agents interact through natural language and can:
-- trade tokens
-- transfer funds
-- monitor wallets
-- schedule actions
-- store memory
-- coordinate with other agents
-
-All transactions are executed automatically on Solana Devnet through the agent's secure wallet.
+<p align="center">
+  <a href="https://sol-aegis.vercel.app">Live Dashboard</a> •
+  <a href="https://github.com/michealimuse777/SolAegis">GitHub</a> •
+  <a href="#demo">Demo</a> •
+  <a href="SECURITY.md">Security Architecture</a>
+</p>
 
 ---
 
-## Demo Overview
+SolAegis enables AI agents to **securely control their own wallets** and **execute on-chain DeFi actions autonomously** on Solana.
 
-The prototype demonstrates the following capabilities:
+Agents can analyze natural language instructions, sign transactions, interact with DeFi protocols like Orca, schedule actions, learn from memory, and coordinate with other agents — all without human intervention.
 
-### Agent Creation
-
-Agents are created programmatically with:
-- unique identity
-- encrypted wallet
-- assigned role
-- configuration and skillset
-
-Each agent immediately receives a Solana wallet address capable of holding SOL and SPL tokens.
+**Built for the DeFi Developer Challenge – Agentic Wallets for AI Agents.**
 
 ---
 
-### Simultaneous Multi-Agent Execution
+## Live Demo
 
-Multiple agents can execute tasks in parallel.
+| | Link |
+|---|---|
+| **Frontend Dashboard** | 👉 [sol-aegis.vercel.app](https://sol-aegis.vercel.app) |
+| **Demo Video** | 👉 [Insert demo video link] |
+| **GitHub Repository** | 👉 [github.com/michealimuse777/SolAegis](https://github.com/michealimuse777/SolAegis) |
 
-Example demo scenario:
+---
+
+## Demo
+
+### Agent Dashboard
+> Multi-agent management with real-time execution streams, risk panels, and SOL price ticker.
+
+![Dashboard](docs/dashboard.png)
+
+### Natural Language Wallet Control & Agent-to-Agent Transfer
+> Agents interpret flexible instructions like "send 0.5 SOL to TraderBot" and resolve agent names to wallet addresses automatically.
+
+![Chat Interface](docs/chat-interface.png)
+
+### Multi-Task Messages & Solana Explorer Links
+> Send compound instructions ("scan scams and check balance") — the system splits them into separate intents. All transaction hashes link directly to Solana Explorer.
+
+![Multi-task](docs/multi-task.png)
+
+### End-to-End Execution
+> Watch the full pipeline: natural language → intent parsing → policy check → on-chain execution → confirmation.
+
+![E2E Execution](docs/e2e-execution.gif)
+
+### CLI Automation
+> Developer CLI for scripting and automation — create agents, send commands, view history.
+
+![CLI Demo](docs/cli-demo.gif)
 
 ```
-Trader Agent   → check wallet balance
-Security Agent → schedule scam scan
-Trade Agent    → swap SOL for devUSDC
+solaegis agents create -n TraderBot
+solaegis chat -a TraderBot "Swap 0.1 SOL for USDC"
 ```
 
-This demonstrates independent autonomous wallets acting simultaneously.
+The agent interprets the instruction and executes the swap automatically.
 
 ---
 
-### Natural Language Agent Control
+## Key Features
 
-Agents understand free-form instructions, not just rigid commands.
+### 🔑 Autonomous Agent Wallets
+Agents create and manage their own wallets programmatically. Each agent gets an independent Solana keypair with encrypted storage.
 
-Examples:
+### ✍️ Automatic Transaction Signing
+Transactions are signed automatically by the agent wallet — no human approval required for policy-approved actions.
 
+### 💱 DeFi Interaction
+Agents execute swaps through liquidity pools on **Orca Whirlpools**. Supports SOL, devUSDC, devUSDT, devSAMO, and more.
+
+### 💬 Natural Language Commands
+Agents understand flexible, conversational instructions:
 ```
 swap 0.05 SOL to USDC
-transfer 0.5 SOL to <address> in 6 hours
-scan for scams every 6 hours
-recover unused accounts
-```
-
-The system converts messages into structured execution intents.
-
----
-
-### Scheduling & Delayed Actions
-
-Agents can schedule actions using natural language.
-
-Examples:
-
-```
-transfer 0.5 SOL in 8 hours
+transfer 0.5 SOL to TraderBot in 6 hours  
 scan tokens every 6 hours
-recover unused accounts tomorrow
-check balance and scan for scams
+recover unused accounts and check balance
 ```
 
-Scheduling is powered by BullMQ with Redis queues.
+### 🤖 Multi-Agent Execution
+Multiple agents can run simultaneously with independent wallets, configurations, and execution pipelines.
 
----
-
-### Persistent Memory
-
-Agents remember user preferences and previous context.
-
+### ⏰ Scheduling & Automation
+Agents can schedule **recurring** and **one-shot delayed** blockchain actions using BullMQ:
 ```
-User:  I like day trading
-Agent: Preference saved
-
-User:  What trading strategy do I like?
-Agent: You prefer day trading
+scan for scams every 6 hours
+transfer 0.1 SOL to ABC123 in 2 hours
 ```
 
-This allows agents to adapt behavior over time.
-
----
-
-### Dynamic Agent Configuration
-
-Agents can reconfigure themselves through chat.
-
-```
-set my daily transaction cap to 3
-```
-
-The configuration updates the agent's execution policy engine.
-
----
-
-### Agent Operating Manual (SKILLS.md)
-
-Each agent loads a `SKILLS.md` document at runtime.
-
-The file defines:
-- agent capabilities
-- execution procedures
-- JSON intent schema
-- safety rules
-
-Agents can dynamically reload their skills using:
+### 🧠 Persistent Memory & Learning
+Agents **remember user preferences** and learn from past interactions:
+- Preferences like "I prefer conservative strategies" are stored and influence future decisions
+- Agents track success/failure history and adapt behavior
+- Contextual notes persist across sessions
+- Agents can recall what they remember when asked
 
 ```
-reload skills
+"Remember that I don't like risky trades"
+"What do you remember about me?"
 ```
 
-This ensures the AI agent always follows a structured operational guide.
+### 📖 SKILLS.md — Live Operating Manual
+Each agent loads a **SKILLS.md** file that defines its capabilities, execution procedures, and safety rules. Agents can **dynamically reload** their skillset at runtime:
+
+```
+"reload skills"
+```
+
+This allows agents to **evolve their behavior without code changes** — update SKILLS.md and the agent immediately adopts new capabilities.
+
+### 🛡️ Policy-Controlled Execution
+Every transaction passes through a multi-layer policy engine with configurable limits per agent. See [SECURITY.md](SECURITY.md) for full details.
+
+### 🖥️ CLI + Web Interface
+Interact through a premium web dashboard **or** a developer CLI — both connect to the same backend API.
 
 ---
 
 ## Architecture
 
-SolAegis separates AI decision making, wallet execution, and security policies to ensure autonomous agents remain safe and controlled.
+SolAegis separates AI reasoning, wallet execution, and security policies to ensure safe autonomous behavior.
 
 ```
-User / CLI / Frontend
+User / CLI / Dashboard
         │
         ▼
    Chat Interface
         │
         ▼
-Deterministic Parser
-  (Regex Commands)
+ Deterministic Parser ──→ handles exact patterns (swap, transfer, schedule)
+        │
+        ▼ (ambiguous only)
+  LLM Intent Parser ────→ Gemini 2.5 Flash for complex instructions
         │
         ▼
- LLM Intent Parser
-(Structured JSON Intents)
+    Policy Engine ──────→ checks limits, roles, allowed actions
         │
         ▼
-   Policy Engine
-   (Risk + Limits)
+  Execution Engine ─────→ signs & submits transactions
         │
         ▼
-  Execution Layer
-   (Solana Web3.js)
+   Agent Wallets ───────→ independent Solana keypairs
         │
         ▼
-   Agent Wallets
- (Isolated per Agent)
+  Orca DeFi Pools ──────→ on-chain swap execution
         │
         ▼
    Solana Devnet
 ```
 
-**Supporting Systems:**
+### Supporting Systems
 
 | System | Purpose |
 |--------|---------|
-| Memory System | Stores agent preferences and history |
-| Scheduler | Delayed & repeating tasks via BullMQ |
-| Market Service | Real-time SOL price data |
-| Audit Log | Every action recorded |
-| SKILLS.md | Agent operating manual |
-
-### Deterministic Parser
-
-Handles clear commands instantly using regex pattern matching.
-
-### LLM Intent Parser
-
-Converts natural language into structured JSON intents using an LLM.
-
-### Policy Guard
-
-Ensures actions comply with security policies before execution.
-
-### Execution Engine
-
-Constructs and submits Solana transactions through the agent's wallet.
+| **Memory System** | Stores agent preferences, notes, and decision history |
+| **Scheduler** | Delayed & recurring tasks via BullMQ + Redis |
+| **Market Service** | Real-time SOL price data via CoinGecko |
+| **Audit Log** | Immutable record of all agent actions |
+| **SKILLS.md** | Agent operating manual — hot-reloadable |
+| **Decision Memory** | Tracks execution outcomes for adaptive behavior |
+| **Position Tracker** | Monitors token positions and trade history |
 
 ---
 
 ## Agentic Wallet Design
 
-Each agent has an independent wallet managed by the Wallet Service.
+Each AI agent is assigned its own **independent wallet** managed by the wallet service.
 
-Capabilities include:
-- programmatic wallet creation
-- automatic transaction signing
+### Capabilities
+- Programmatic wallet creation with auto-generated Solana keypairs
+- AES-256 encrypted private key storage
+- Automatic transaction signing
 - SOL and SPL token support
-- safe key storage
-- on-chain interaction with DeFi protocols
+- DeFi interaction (Orca Whirlpools)
+- Token account management and rent recovery
 
-Wallets are used to execute operations such as:
-- token swaps
-- SOL and SPL transfers
-- token account management
-- airdrop requests
-- solana recovery
-- scam tokens check
+### Actions Agents Can Execute
+| Action | Description |
+|--------|-------------|
+| `swap` | Token swaps via Orca Whirlpools |
+| `transfer` | SOL transfers to wallets or other agents |
+| `scan_airdrops` | Scan wallet for airdropped tokens |
+| `scam_check` | Analyze tokens for scam indicators |
+| `recover` | Close empty accounts and reclaim rent |
+| `airdrop` | Request devnet SOL (development only) |
 
-All transactions are executed automatically by the agent.
+All transactions execute on **Solana Devnet**.
 
 ---
 
-## Multi-Agent Scalability
+## Multi-Agent System
 
-The system supports multiple agents running independently.
+SolAegis supports multiple autonomous agents running simultaneously.
 
 Each agent maintains:
-- its own wallet
-- configuration
-- skillset
-- memory
-- transaction history
+- Its own **Solana wallet** (independent keypair)
+- **Configuration** (role, risk profile, limits)
+- **Memory** (preferences, notes, history)
+- **Transaction history** with full audit trail
+- **Execution policies** enforced per-agent
 
-Agents can run concurrently and perform independent blockchain actions.
+### Example Scenario
+```
+Trader Agent   → swap SOL for USDC automatically
+Security Agent → scan tokens for scam indicators  
+Monitor Agent  → check wallet balances and track positions
+```
+
+Agents operate independently and can execute tasks **in parallel** through the Multi-Agent Control Center.
+
+### Agent-to-Agent Transfers
+Agents can send SOL directly to other agents by name:
+```
+"Send 0.5 SOL to SecurityBot"
+```
+The system resolves agent names to wallet addresses automatically.
+
+---
+
+## Memory & Learning
+
+SolAegis agents are not stateless — they **learn and remember**.
+
+### What Agents Remember
+- **User preferences**: "I prefer conservative strategies" → stored as key-value pairs
+- **Contextual notes**: "Remember my hardware wallet is ABC123" → persisted across sessions
+- **Success/failure history**: Tracks which actions succeeded and which failed
+- **Decision memory**: Records execution outcomes, risk scores, and confidence levels
+
+### How Memory Influences Behavior
+- The LLM receives memory context in every conversation, allowing it to make informed decisions
+- Failed actions are recorded so agents can avoid repeating mistakes
+- Preferences shape the agent's response style and risk tolerance
+
+### Recalling Memory
+```
+"What do you remember about me?"
+```
+The agent will list all stored preferences and notes.
+
+---
+
+## SKILLS.md Agent Framework
+
+Each agent loads a `SKILLS.md` file at runtime that defines:
+- Supported actions and execution procedures
+- Intent parsing schemas
+- Safety rules and constraints
+- DeFi strategy guidelines
+
+### Hot Reloading
+Agents can **reload their skillset dynamically**:
+```
+"reload skills"
+```
+This re-reads SKILLS.md from disk, allowing agents to adopt new capabilities **without restarting the server or modifying code**.
+
+### Why This Matters
+SKILLS.md acts as a **living operating manual**. Update the file, reload, and the agent immediately understands new instructions. This separates agent behavior from application code — a key principle for maintainable agentic systems.
 
 ---
 
 ## Security Architecture
 
-Since autonomous agents control wallets, SolAegis implements 10 security layers.
+Autonomous agents controlling wallets require **strong safeguards**. SolAegis implements **10 security layers**.
 
-| Layer | Protection |
-|-------|-----------|
-| Wallet Signature Authentication | Ed25519 wallet verification |
-| JWT Authentication | Secure API session management |
-| Prompt Injection Guard | Detects malicious LLM manipulation |
-| Input Sanitization | Prevents XSS or injection attacks |
-| Rate Limiting | Prevents spam and brute-force attacks |
-| Agent Ownership Isolation | Users cannot access other agents |
-| Policy Engine | Enforces transaction limits |
-| Scheduler Guardrails | Prevents abusive scheduled jobs |
-| Encrypted Wallet Storage | AES-256-GCM encrypted key storage |
-| Audit Logging | Immutable log of all actions |
+For full details, see **[SECURITY.md](SECURITY.md)**.
 
-These safeguards ensure agents remain autonomous but controlled.
-
----
-
-## Tech Stack
-
-**Frontend**
-- Next.js
-- React
-- WebSocket streaming
-
-**Backend**
-- Node.js
-- Express
-- BullMQ scheduler
-
-**Blockchain**
-- Solana Web3.js
-- SPL Token SDK
-- Devnet RPC
-
-**Infrastructure**
-- Supabase (database + persistence)
-- Redis (task queue)
-- LLM (intent parsing)
+| # | Layer | Protection |
+|---|-------|-----------|
+| 1 | Wallet Signature Verification | Ed25519 authentication for wallet login |
+| 2 | JWT Authentication | Secure API sessions with expiration |
+| 3 | Prompt Injection Guard | Pattern-based detection of malicious prompts |
+| 4 | Input Sanitization | HTML/XSS stripping on all request bodies |
+| 5 | Rate Limiting | Per-IP and per-user request throttling |
+| 6 | Agent Ownership Isolation | Users cannot access other users' agents |
+| 7 | Policy Engine | Per-agent transaction limits and action restrictions |
+| 8 | Scheduler Guardrails | Prevents abusive job creation |
+| 9 | Encrypted Wallet Storage | AES-256 encryption for all private keys |
+| 10 | Audit Logging | Immutable record of every action |
 
 ---
 
 ## CLI Interface
 
-SolAegis also provides a developer CLI for interacting with agents directly from the terminal.
-
-The CLI communicates with the backend API and exposes the same capabilities as the web interface.
-
-Run using:
+SolAegis includes a developer CLI for interacting with agents from the terminal.
 
 ```bash
-npx tsx cli/index.ts <command>
+# Create agent
+solaegis agents create -n TraderBot -r trader
+
+# Send instruction
+solaegis chat -a TraderBot "Swap 0.1 SOL for USDC"
+
+# Schedule action
+solaegis chat -a TraderBot "Transfer 0.5 SOL in 6 hours"
+
+# View configuration
+solaegis config show -a TraderBot
+
+# View activity history
+solaegis history -a TraderBot
+
+# View audit log
+solaegis audit -a TraderBot
+
+# Check market data
+solaegis market
 ```
 
-or
-
+### Demo Script
+Run the full multi-agent demo in one shot:
 ```bash
-npm run cli -- <command>
+npx tsx cli/demo.ts
 ```
-
-### Authentication
-
-Register or log in:
-
-```bash
-solaegis auth register -u <username> -p <password>
-solaegis auth login -u <username> -p <password>
-```
-
-Verify wallet ownership:
-
-```bash
-solaegis auth wallet-verify -a <wallet-address>
-```
-
-### Agent Management
-
-Create and manage agents:
-
-```bash
-solaegis agents list
-solaegis agents create -n "TraderBot"
-solaegis agents delete -a <agent-id>
-```
-
-### Chat with Agents
-
-Send natural language instructions directly from the terminal.
-
-Immediate actions:
-
-```bash
-solaegis chat -a <id> "Swap 1 SOL for USDC"
-solaegis chat -a <id> "Check my balance"
-```
-
-Delayed actions:
-
-```bash
-solaegis chat -a <id> "Transfer 0.5 SOL to XYZ in 6 hours"
-```
-
-Scheduled actions:
-
-```bash
-solaegis chat -a <id> "Scan tokens every 6 hours"
-```
-
-Multi-command instructions:
-
-```bash
-solaegis chat -a <id> "Check balance and scan for scams"
-```
-
-### Agent Configuration
-
-View or update agent policies:
-
-```bash
-solaegis config show -a <id>
-solaegis config update -a <id> --max-sol 0.1
-solaegis config update -a <id> --daily-tx-limit 3
-```
-
-### Monitoring
-
-View agent activity and execution logs:
-
-```bash
-solaegis history -a <id>
-solaegis audit -a <id>
-solaegis jobs list -a <id>
-```
-
-### Why the CLI Exists
-
-The CLI demonstrates that SolAegis is API-first infrastructure for AI agents, not just a UI application.
-
-This allows:
-- automated scripts
-- developer integrations
-- remote agent control
-- infrastructure-style deployment
 
 ---
 
@@ -386,101 +332,132 @@ This allows:
 ```
 solaegis/
   backend/
-    core/           agent logic and execution pipeline
-    services/       wallet, policies, market data
-    skills/         DeFi interaction modules
-    scheduler/      BullMQ job system
-    security/       authentication and protection
+    core/               agent logic, chat handler, memory, config
+    services/           wallet, policies, market data, position tracking
+    scheduler/          BullMQ job system (cron + delayed)
+    security/           auth, rate limiting, injection guard, audit
+    skills/             DeFi skills (swap, recovery, scam filter)
+    llm/                LLM manager with key rotation + fallback
 
   frontend/
-    app/            main UI
-    components/     chat and agent dashboard
+    app/
+      components/       React components (sidebar, chat, panels)
+      page.tsx          Main application page
+
+  cli/
+    index.ts            CLI interface
+    demo.ts             Demo automation script
 
   data/
     agents/{id}/
-      config.json
-      memory.json
-      SKILLS.md
+      config.json       Agent configuration
+      memory.json       Persistent memory
+      SKILLS.md         Agent operating manual
 ```
 
 ---
 
-## Example Commands
+## Prerequisites
 
-Swap tokens:
-```
-swap 0.05 SOL to USDC
-```
+| Requirement | Version |
+|-------------|---------|
+| Node.js | 18+ |
+| npm or pnpm | latest |
+| Redis | 6+ (required for BullMQ scheduler) |
+| Internet | For Solana Devnet RPC |
 
-Transfer funds:
-```
-send 0.1 SOL to <address>
-```
-
-Delayed action:
-```
-transfer 0.5 SOL in 8 hours
-```
-
-Schedule monitoring:
-```
-scan for scams every 6 hours
-```
-
-Update configuration:
-```
-set daily transaction cap to 3
-```
-
----
-
-## Running the Prototype
-
-Clone the repository:
+Optional: Solana CLI, Docker
 
 ```bash
+node -v
+npm -v
+redis-server --version
+```
+
+---
+
+## Environment Setup
+
+```bash
+cp .env.example .env
+```
+
+Required variables:
+```env
+PORT=4000
+SOLANA_RPC_URL=https://api.devnet.solana.com
+REDIS_URL=redis://localhost:6379
+MASTER_KEY=<32-byte-hex-key>
+
+# LLM (Gemini)
+LLM_KEY_1=your_gemini_key
+LLM_PRIMARY_PROVIDER=gemini
+LLM_PRIMARY_MODEL=gemini-2.5-flash
+
+# Supabase (optional, for persistence)
+SUPABASE_URL=your_supabase_url
+SUPABASE_SERVICE_KEY=your_supabase_key
+```
+
+---
+
+## Running Locally
+
+```bash
+# Clone
 git clone https://github.com/michealimuse777/SolAegis.git
 cd SolAegis
-```
 
-Install dependencies:
-
-```bash
+# Install dependencies
 npm install
-cd frontend
-npm install
-```
+cd frontend && npm install && cd ..
 
-Start backend:
-
-```bash
+# Start backend
 npm run dev
-```
 
-Start frontend:
-
-```bash
+# Start frontend (separate terminal)
 cd frontend
 npm run dev
 ```
 
-- Backend: `http://localhost:4000`
-- Frontend: `http://localhost:3000`
+| Service | URL |
+|---------|-----|
+| Backend API | http://localhost:4000 |
+| Frontend | http://localhost:3000 |
 
-The system runs fully on Solana Devnet.
+The system runs entirely on **Solana Devnet**.
 
 ---
 
-## Why SolAegis
+## Why SolAegis Matters
 
-AI agents are becoming active participants in decentralized ecosystems.
+AI agents are becoming **active economic participants** in decentralized ecosystems.
 
-However, for agents to operate autonomously they require:
-- secure wallet infrastructure
-- controlled transaction execution
-- structured decision frameworks
+For agents to operate safely, they require:
+- ✅ Secure wallet infrastructure
+- ✅ Controlled transaction execution
+- ✅ Policy enforcement with configurable limits
+- ✅ DeFi protocol integration
+- ✅ Memory and learning capabilities
+- ✅ Multi-agent coordination
 
-SolAegis demonstrates how agentic wallets can enable AI agents to interact with DeFi safely and independently.
+SolAegis demonstrates how **agentic wallets** allow AI agents to interact with DeFi **safely and independently** on Solana.
+
+---
+
+## Tech Stack
+
+| Layer | Technology |
+|-------|-----------|
+| **Frontend** | Next.js, React, WebSocket streaming |
+| **Backend** | Node.js, Express, TypeScript |
+| **Scheduler** | BullMQ + Redis |
+| **Blockchain** | Solana Web3.js, SPL Token SDK |
+| **DeFi** | Orca Whirlpools SDK |
+| **LLM** | Google Gemini 2.5 Flash (with fallback) |
+| **Database** | Supabase (PostgreSQL) |
+| **Auth** | Ed25519 wallet signatures + JWT |
+| **Encryption** | AES-256-GCM for wallet keys |
 
 ---
 
