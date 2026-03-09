@@ -47,17 +47,16 @@ Agents can analyze natural language instructions, sign transactions, interact wi
 ### Multi-Task Messages & Solana Explorer Links
 > Send compound instructions ("scan scams and check balance") — the system splits them into separate intents. All transaction hashes link directly to Solana Explorer.
 
-<img src="docs/multi-task.png" width="480" alt="Multi-task" />
+<img src="docs/multitaskmessage.gif.gif" width="480" alt="Multi-task Messages" />
 
-### End-to-End Execution
-> Watch the full pipeline: natural language → intent parsing → policy check → on-chain execution → confirmation.
+### Simultaneous Multi-Agent Execution
+> Multiple agents execute different tasks at the same time — each with its own wallet, policy engine, and execution pipeline.
 
-<img src="docs/e2e-execution.gif" width="480" alt="E2E Execution" />
+<img src="docs/simultaneousrun.gif.gif" width="480" alt="Simultaneous Agent Execution" />
 
 ### CLI Automation
 > Developer CLI for scripting and automation — create agents, send commands, view history.
 
-<img src="docs/cli-demo.gif" width="480" alt="CLI Demo" />
 
 ```
 solaegis agents create -n TraderBot
