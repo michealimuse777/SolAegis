@@ -37,27 +37,27 @@ Agents can analyze natural language instructions, sign transactions, interact wi
 ### Agent Dashboard
 > Multi-agent management with real-time execution streams, risk panels, and SOL price ticker.
 
-<img src="docs/dashboard.png" width="600" alt="Dashboard" />
+<img src="docs/dashboard.png" width="480" alt="Dashboard" />
 
 ### Natural Language Wallet Control & Agent-to-Agent Transfer
 > Agents interpret flexible instructions like "send 0.5 SOL to TraderBot" and resolve agent names to wallet addresses automatically.
 
-<img src="docs/chat-interface.png" width="600" alt="Chat Interface" />
+<img src="docs/chat-interface.png" width="480" alt="Chat Interface" />
 
 ### Multi-Task Messages & Solana Explorer Links
 > Send compound instructions ("scan scams and check balance") — the system splits them into separate intents. All transaction hashes link directly to Solana Explorer.
 
-<img src="docs/multi-task.png" width="600" alt="Multi-task" />
+<img src="docs/multi-task.png" width="480" alt="Multi-task" />
 
 ### End-to-End Execution
 > Watch the full pipeline: natural language → intent parsing → policy check → on-chain execution → confirmation.
 
-<img src="docs/e2e-execution.gif" width="600" alt="E2E Execution" />
+<img src="docs/e2e-execution.gif" width="480" alt="E2E Execution" />
 
 ### CLI Automation
 > Developer CLI for scripting and automation — create agents, send commands, view history.
 
-<img src="docs/cli-demo.gif" width="600" alt="CLI Demo" />
+<img src="docs/cli-demo.gif" width="480" alt="CLI Demo" />
 
 ```
 solaegis agents create -n TraderBot
