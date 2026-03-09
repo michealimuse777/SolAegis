@@ -461,6 +461,39 @@ SolAegis demonstrates how **agentic wallets** allow AI agents to interact with D
 
 ---
 
+## Detailed Architecture
+
+See **[ARCHITECTURE.md](ARCHITECTURE.md)** for the complete technical breakdown including:
+- Full request data flow (10 steps from input to on-chain execution)
+- Component-by-component analysis with code references
+- Deterministic parser patterns and LLM fallback logic
+- Policy engine decision tree
+- Memory system architecture
+- Scheduler internals
+
+---
+
+## Roadmap
+
+### Mainnet Launch
+Production release with secure wallet isolation, policy-based execution, and native Solana DeFi integrations.
+
+### Phase 1 — Secure Agent Custody
+- **MPC Key Sharding** — eliminate single points of failure in agent key storage
+- **HD Wallet Derivation (BIP44)** — spawn unlimited deterministic agent wallets from a single master seed
+- **TEE Integration** — move key derivation and signing into Trusted Execution Environments
+
+### Phase 2 — Enterprise Risk Controls
+- **Human-in-the-Loop** approvals for high-risk actions (large transfers)
+- **Fiat-denominated limits** using Pyth Network price feeds
+- **Adaptive risk policies** that reduce exposure after failed trades or high slippage
+
+### Phase 3 — DeFi Composability
+- **Gasless agent transactions** via Solana paymaster-style fee abstraction
+- **Expanded AI skill modules** for Jupiter Exchange, Marginfi, and Meteora
+
+---
+
 ## License
 
 MIT
