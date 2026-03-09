@@ -9,16 +9,22 @@
   <a href="https://sol-aegis.vercel.app">Live Dashboard</a> •
   <a href="https://github.com/michealimuse777/SolAegis">GitHub</a> •
   <a href="#demo">Demo</a> •
-  <a href="SECURITY.md">Security Architecture</a>
+  <a href="SECURITY.md">Security Architecture</a> •
+  <a href="ARCHITECTURE.md">Architecture</a>
 </p>
 
 ---
 
-SolAegis enables AI agents to **securely control their own wallets** and **execute on-chain DeFi actions autonomously** on Solana.
+To be true economic participants, AI agents need more than just read-only data — they need secure, programmatic control over their own assets. SolAegis is a production-grade runtime that provisions independent, AES-encrypted wallets for AI agents, allowing them to parse natural language, schedule tasks, and execute complex DeFi actions with zero human intervention.
 
-Agents can analyze natural language instructions, sign transactions, interact with DeFi protocols like Orca, schedule actions, learn from memory, and coordinate with other agents — all without human intervention.
+Developed for the **Superteam Agentic Wallets Challenge**, this architecture strictly satisfies every core requirement of the bounty:
 
-**Built for the DeFi Developer Challenge – Agentic Wallets for AI Agents.**
+- **Programmatic Key Provisioning** — Agents dynamically generate and manage their own isolated Solana wallets.
+- **Zero-Intervention Signing** — A deterministic execution engine signs transactions autonomously, strictly guarded by a 10-layer Policy Sandbox.
+- **Asset Custody & Recovery** — Native support for holding SOL and SPL tokens, alongside autonomous rent-recovery for empty token accounts.
+- **Live Protocol Interaction** — Integrated directly with Orca Whirlpools for on-chain Devnet liquidity routing.
+- **Dynamic SKILLS.md Architecture** — Agents do not rely on hardcoded scripts. They hot-reload their capabilities in real-time by reading the SKILLS.md operating manual.
+- **Sandboxed Reasoning** — LLM intent parsing is strictly decoupled from the execution engine to prevent hallucinated transactions.
 
 ---
 
@@ -28,6 +34,8 @@ Agents can analyze natural language instructions, sign transactions, interact wi
 |---|---|
 | **Frontend Dashboard** | [sol-aegis.vercel.app](https://sol-aegis.vercel.app) |
 | **Demo Video** | [Demo Video](https://youtu.be/nP5UZOYYeWM?si=ARQLzi4OKpEzQ7ce) |
+| **Security Architecture** | [SECURITY.md](SECURITY.md) |
+| **Architecture** | [ARCHITECTURE.md](ARCHITECTURE.md) |
 | **GitHub Repository** | [github.com/michealimuse777/SolAegis](https://github.com/michealimuse777/SolAegis) |
 
 ---
@@ -54,16 +62,10 @@ Agents can analyze natural language instructions, sign transactions, interact wi
 
 <img src="docs/simultaneousrun.gif.gif" width="480" alt="Simultaneous Agent Execution" />
 
-### CLI Automation
-> Developer CLI for scripting and automation — create agents, send commands, view history.
+### CLI Multi-Agent Execution
+> The developer CLI runs all agents simultaneously — each agent authenticates, parses intent, and executes independently.
 
-
-```
-solaegis agents create -n TraderBot
-solaegis chat -a TraderBot "Swap 0.1 SOL for USDC"
-```
-
-The agent interprets the instruction and executes the swap automatically.
+<img src="docs/cliexecution.gif.gif" width="480" alt="CLI Multi-Agent Execution" />
 
 ---
 
