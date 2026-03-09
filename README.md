@@ -26,9 +26,9 @@ Agents can analyze natural language instructions, sign transactions, interact wi
 
 | | Link |
 |---|---|
-| **Frontend Dashboard** | 👉 [sol-aegis.vercel.app](https://sol-aegis.vercel.app) |
-| **Demo Video** | 👉 [Insert demo video link] |
-| **GitHub Repository** | 👉 [github.com/michealimuse777/SolAegis](https://github.com/michealimuse777/SolAegis) |
+| **Frontend Dashboard** | [sol-aegis.vercel.app](https://sol-aegis.vercel.app) |
+| **Demo Video** | [Demo Video](https://youtu.be/nP5UZOYYeWM?si=ARQLzi4OKpEzQ7ce) |
+| **GitHub Repository** | [github.com/michealimuse777/SolAegis](https://github.com/michealimuse777/SolAegis) |
 
 ---
 

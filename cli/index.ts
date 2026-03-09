@@ -63,7 +63,12 @@ program
     .name("solaegis")
     .description("CLI for the SolAegis autonomous agent platform")
     .version("1.0.0")
-    .hook("preAction", () => banner());
+    .option("-t, --token <jwt>", "JWT auth token (or set SOLAEGIS_TOKEN env var)")
+    .hook("preAction", (thisCmd) => {
+        const opts = thisCmd.opts();
+        AUTH_TOKEN = opts.token || process.env.SOLAEGIS_TOKEN || null;
+        banner();
+    });
 
 // ─── Auth ───
 
