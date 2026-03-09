@@ -37,27 +37,27 @@ Agents can analyze natural language instructions, sign transactions, interact wi
 ### Agent Dashboard
 > Multi-agent management with real-time execution streams, risk panels, and SOL price ticker.
 
-![Dashboard](docs/dashboard.png)
+<img src="docs/dashboard.png" width="600" alt="Dashboard" />
 
 ### Natural Language Wallet Control & Agent-to-Agent Transfer
 > Agents interpret flexible instructions like "send 0.5 SOL to TraderBot" and resolve agent names to wallet addresses automatically.
 
-![Chat Interface](docs/chat-interface.png)
+<img src="docs/chat-interface.png" width="600" alt="Chat Interface" />
 
 ### Multi-Task Messages & Solana Explorer Links
 > Send compound instructions ("scan scams and check balance") — the system splits them into separate intents. All transaction hashes link directly to Solana Explorer.
 
-![Multi-task](docs/multi-task.png)
+<img src="docs/multi-task.png" width="600" alt="Multi-task" />
 
 ### End-to-End Execution
 > Watch the full pipeline: natural language → intent parsing → policy check → on-chain execution → confirmation.
 
-![E2E Execution](docs/e2e-execution.gif)
+<img src="docs/e2e-execution.gif" width="600" alt="E2E Execution" />
 
 ### CLI Automation
 > Developer CLI for scripting and automation — create agents, send commands, view history.
 
-![CLI Demo](docs/cli-demo.gif)
+<img src="docs/cli-demo.gif" width="600" alt="CLI Demo" />
 
 ```
 solaegis agents create -n TraderBot
@@ -70,16 +70,16 @@ The agent interprets the instruction and executes the swap automatically.
 
 ## Key Features
 
-### 🔑 Autonomous Agent Wallets
+### Autonomous Agent Wallets
 Agents create and manage their own wallets programmatically. Each agent gets an independent Solana keypair with encrypted storage.
 
-### ✍️ Automatic Transaction Signing
+### Automatic Transaction Signing
 Transactions are signed automatically by the agent wallet — no human approval required for policy-approved actions.
 
-### 💱 DeFi Interaction
+### DeFi Interaction
 Agents execute swaps through liquidity pools on **Orca Whirlpools**. Supports SOL, devUSDC, devUSDT, devSAMO, and more.
 
-### 💬 Natural Language Commands
+### Natural Language Commands
 Agents understand flexible, conversational instructions:
 ```
 swap 0.05 SOL to USDC
@@ -88,17 +88,17 @@ scan tokens every 6 hours
 recover unused accounts and check balance
 ```
 
-### 🤖 Multi-Agent Execution
+### Multi-Agent Execution
 Multiple agents can run simultaneously with independent wallets, configurations, and execution pipelines.
 
-### ⏰ Scheduling & Automation
+### Scheduling & Automation
 Agents can schedule **recurring** and **one-shot delayed** blockchain actions using BullMQ:
 ```
 scan for scams every 6 hours
 transfer 0.1 SOL to ABC123 in 2 hours
 ```
 
-### 🧠 Persistent Memory & Learning
+### Persistent Memory & Learning
 Agents **remember user preferences** and learn from past interactions:
 - Preferences like "I prefer conservative strategies" are stored and influence future decisions
 - Agents track success/failure history and adapt behavior
@@ -110,7 +110,7 @@ Agents **remember user preferences** and learn from past interactions:
 "What do you remember about me?"
 ```
 
-### 📖 SKILLS.md — Live Operating Manual
+### SKILLS.md — Live Operating Manual
 Each agent loads a **SKILLS.md** file that defines its capabilities, execution procedures, and safety rules. Agents can **dynamically reload** their skillset at runtime:
 
 ```
@@ -119,10 +119,10 @@ Each agent loads a **SKILLS.md** file that defines its capabilities, execution p
 
 This allows agents to **evolve their behavior without code changes** — update SKILLS.md and the agent immediately adopts new capabilities.
 
-### 🛡️ Policy-Controlled Execution
+### Policy-Controlled Execution
 Every transaction passes through a multi-layer policy engine with configurable limits per agent. See [SECURITY.md](SECURITY.md) for full details.
 
-### 🖥️ CLI + Web Interface
+### CLI + Web Interface
 Interact through a premium web dashboard **or** a developer CLI — both connect to the same backend API.
 
 ---
@@ -434,12 +434,12 @@ The system runs entirely on **Solana Devnet**.
 AI agents are becoming **active economic participants** in decentralized ecosystems.
 
 For agents to operate safely, they require:
-- ✅ Secure wallet infrastructure
-- ✅ Controlled transaction execution
-- ✅ Policy enforcement with configurable limits
-- ✅ DeFi protocol integration
-- ✅ Memory and learning capabilities
-- ✅ Multi-agent coordination
+- Secure wallet infrastructure
+- Controlled transaction execution
+- Policy enforcement with configurable limits
+- DeFi protocol integration
+- Memory and learning capabilities
+- Multi-agent coordination
 
 SolAegis demonstrates how **agentic wallets** allow AI agents to interact with DeFi **safely and independently** on Solana.
 
