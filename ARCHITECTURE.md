@@ -1,6 +1,6 @@
 # SolAegis Architecture
 
-A detailed technical breakdown of how SolAegis processes user instructions, from natural language input to on-chain transaction execution.
+Architecture notes for a hackathon prototype that processes user instructions from natural-language input through to Solana Devnet transaction execution. It is intended for demonstration and experimentation, not production custody.
 
 ---
 
@@ -43,7 +43,7 @@ A detailed technical breakdown of how SolAegis processes user instructions, from
 │           ▼                                         │               │
 │  ┌────────────────────┐                             │               │
 │  │  LLM Intent Parser │ ──────────────────────────► │               │
-│  │  (Gemini 2.5 Flash)│                             │               │
+│  │ (LLM provider)    │                             │               │
 │  └────────────────────┘                             │               │
 │                                                     ▼               │
 │                                            ┌────────────────┐       │
@@ -179,7 +179,7 @@ backend/core/chatHandler.ts → parseIntents()
 backend/llm/llmManager.ts
 ```
 
-For **ambiguous messages** that don't match deterministic patterns, the system falls back to **Gemini 2.5 Flash**.
+For **ambiguous messages** that do not match deterministic patterns, the system can fall back to its configured LLM provider.
 
 **LLM receives:**
 - Agent ID, role, and allowed actions
@@ -443,14 +443,14 @@ The backend broadcasts events via WebSocket for real-time UI updates:
 │  Express │ Commander │ Next.js │ React      │
 ├─────────────────────────────────────────────┤
 │               Service Layer                 │
-│  Gemini LLM │ BullMQ │ Supabase │ CoinGecko│
+│ LLM provider │ BullMQ │ Supabase │ CoinGecko│
 ├─────────────────────────────────────────────┤
 │             Blockchain Layer                │
 │  @solana/web3.js │ @solana/spl-token        │
 │  @orca-so/whirlpools-sdk │ TweetNaCl       │
 ├─────────────────────────────────────────────┤
 │            Infrastructure Layer             │
-│  Redis │ PostgreSQL (Supabase) │ Vercel     │
+│ Redis │ PostgreSQL (Supabase) │ Frontend host│
 │  Railway │ Solana Devnet RPC                │
 └─────────────────────────────────────────────┘
 ```

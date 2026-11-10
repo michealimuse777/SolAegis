@@ -1,8 +1,8 @@
 # SolAegis Security Architecture
 
-Autonomous AI agents controlling real wallets and executing on-chain transactions create a unique security challenge: the system must be **permissionless enough for agents to act independently**, yet **restrictive enough to prevent unauthorized or dangerous actions**.
+Agent wallets and Devnet transaction execution introduce a security challenge: the system needs controls that constrain supported actions while still allowing the prototype to demonstrate agent workflows.
 
-SolAegis addresses this with a **10-layer defense-in-depth architecture** where every transaction must pass through multiple independent security checks before reaching the blockchain.
+SolAegis documents the controls implemented in this hackathon prototype. They support development and demonstration on Solana Devnet; they are not an independent audit or a claim of production readiness.
 
 ---
 
@@ -12,17 +12,17 @@ SolAegis addresses this with a **10-layer defense-in-depth architecture** where 
 2. **Policy before execution.** Every action passes through the policy engine before any on-chain interaction occurs.
 3. **Deterministic over probabilistic.** A rule-based deterministic parser handles known patterns before falling back to LLM parsing.
 4. **Isolation by default.** Each agent has its own wallet, configuration, memory, and execution context. Users cannot access other users' agents.
-5. **Audit everything.** Every action — successful or denied — is logged immutably for forensic analysis.
+5. **Audit actions.** Successful and denied actions are recorded for review.
 
 ---
 
-## The 10 Security Layers
+## Security Controls
 
-### Layer 1 — Wallet Signature Verification
+### Wallet Signature Verification
 
 **File:** [`backend/security/auth.ts`](backend/security/auth.ts)
 
-SolAegis supports **Ed25519 wallet signature authentication** — the gold standard for Solana identity verification.
+SolAegis supports **Ed25519 wallet signature authentication**, a common mechanism for Solana wallet identity verification.
 
 **How it works:**
 1. The client requests a **cryptographic nonce** from the server (`POST /api/auth/wallet/nonce`)
@@ -50,7 +50,7 @@ const isValid = nacl.sign.detached.verify(
 
 ---
 
-### Layer 2 — JWT Authentication
+### JWT Authentication
 
 **File:** [`backend/security/auth.ts`](backend/security/auth.ts)
 
@@ -79,7 +79,7 @@ app.use(authMiddleware); // Applied globally — no unauthenticated routes
 
 ---
 
-### Layer 3 — Prompt Injection Guard
+### Prompt Injection Guard
 
 **File:** [`backend/security/promptInjectionGuard.ts`](backend/security/promptInjectionGuard.ts)
 
@@ -116,7 +116,7 @@ if (!injectionCheck.safe) {
 
 ---
 
-### Layer 4 — Input Sanitization
+### Input Sanitization
 
 **File:** [`backend/security/securityMiddleware.ts`](backend/security/securityMiddleware.ts)
 
@@ -146,7 +146,7 @@ function sanitize(obj: any): any {
 
 ---
 
-### Layer 5 — Rate Limiting
+### Rate Limiting
 
 **File:** [`backend/security/rateLimiter.ts`](backend/security/rateLimiter.ts)
 
@@ -166,7 +166,7 @@ Separate rate limiters protect different endpoint categories:
 
 ---
 
-### Layer 6 — Agent Ownership Isolation
+### Agent Ownership Isolation
 
 **File:** [`backend/security/auth.ts`](backend/security/auth.ts) — `agentOwnershipMiddleware`
 
@@ -195,7 +195,7 @@ Users are **cryptographically bound** to their agents. User A cannot view, modif
 
 ---
 
-### Layer 7 — Policy Engine
+### Policy Engine
 
 **File:** [`backend/services/policyEngine.ts`](backend/services/policyEngine.ts)
 
@@ -238,7 +238,7 @@ Your limits: max 0.5 SOL/tx, 10 txs/day, allowed: [transfer, swap, scan_airdrops
 
 ---
 
-### Layer 8 — Scheduler Guardrails
+### Scheduler Guardrails
 
 **File:** [`backend/security/schedulerGuardrails.ts`](backend/security/schedulerGuardrails.ts)
 
@@ -269,7 +269,7 @@ const INTERVAL_MAP: Record<string, string> = {
 
 ---
 
-### Layer 9 — Encrypted Wallet Storage
+### Encrypted Wallet Storage
 
 **File:** [`backend/llm/keyStore.ts`](backend/llm/keyStore.ts)
 
@@ -305,11 +305,11 @@ encrypt(text: string): string {
 
 ---
 
-### Layer 10 — Audit Logging
+### Audit Logging
 
 **File:** [`backend/security/auditLog.ts`](backend/security/auditLog.ts)
 
-Every action, whether successful or denied, is recorded in an **immutable audit log**.
+Successful and denied actions are recorded in an audit log for review.
 
 **What gets logged:**
 
@@ -409,7 +409,7 @@ Deterministic Parser ──→ Exact regex patterns for known commands
     │                     (swap, transfer, schedule, etc.)
     │
     ▼ (only if no match)
-LLM Intent Parser ────→ Gemini processes ambiguous messages
+LLM Intent Parser ────→ configured provider processes ambiguous messages
 ```
 
 **Why this matters:**
@@ -456,7 +456,7 @@ const AgentConfigSchema = z.object({
 
 ## Summary
 
-SolAegis treats security as a **first-class architectural concern**, not an afterthought. The 10-layer approach ensures that even if one layer is bypassed, multiple additional layers protect agent wallets and user funds.
+SolAegis keeps policy, authentication, input handling, and audit logging as separate concerns in the prototype. These controls support Devnet experimentation; they do not guarantee protection for real funds or replace independent security review.
 
 ```
    Message enters

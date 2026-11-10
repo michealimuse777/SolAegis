@@ -3,10 +3,10 @@
 </p>
 
 <h1 align="center">SolAegis</h1>
-<p align="center"><strong>Autonomous Agentic Wallet Infrastructure for AI Agents on Solana</strong></p>
+<p align="center"><strong>Policy-controlled wallet prototype for AI agents on Solana Devnet</strong></p>
 
 <p align="center">
-  <a href="https://sol-aegis.vercel.app"><img src="https://img.shields.io/badge/Live_Dashboard-00e0ff?style=for-the-badge&logo=vercel&logoColor=black" alt="Live Dashboard" /></a>
+  <a href="https://sol-aegis.vercel.app"><img src="https://img.shields.io/badge/Live_Dashboard-00e0ff?style=for-the-badge" alt="Live Dashboard" /></a>
   <a href="https://youtu.be/nP5UZOYYeWM?si=ARQLzi4OKpEzQ7ce"><img src="https://img.shields.io/badge/Demo_Video-FF0000?style=for-the-badge&logo=youtube&logoColor=white" alt="Demo Video" /></a>
   <a href="SECURITY.md"><img src="https://img.shields.io/badge/Security-1a1a2e?style=for-the-badge&logo=hackthebox&logoColor=00e0ff" alt="Security" /></a>
   <a href="ARCHITECTURE.md"><img src="https://img.shields.io/badge/Architecture-1a1a2e?style=for-the-badge&logo=blueprint&logoColor=00e0ff" alt="Architecture" /></a>
@@ -14,16 +14,18 @@
 
 ---
 
-To be true economic participants, AI agents need more than just read-only data — they need secure, programmatic control over their own assets. SolAegis is a production-grade runtime that provisions independent, AES-encrypted wallets for AI agents, allowing them to parse natural language, schedule tasks, and execute complex DeFi actions with zero human intervention.
+SolAegis is a hackathon prototype built for the **Superteam Agentic Wallets Challenge**. It explores policy-controlled wallet workflows for AI agents on Solana Devnet: natural-language request parsing, scheduling, and constrained transaction execution.
 
-Developed for the **Superteam Agentic Wallets Challenge**, this architecture strictly satisfies every core requirement of the bounty:
+The prototype demonstrates the following challenge-relevant workflows:
 
-- **Programmatic Key Provisioning** — Agents dynamically generate and manage their own isolated Solana wallets.
-- **Zero-Intervention Signing** — A deterministic execution engine signs transactions autonomously, strictly guarded by a 10-layer Policy Sandbox.
-- **Asset Custody & Recovery** — Native support for holding SOL and SPL tokens, alongside autonomous rent-recovery for empty token accounts.
-- **Live Protocol Interaction** — Integrated directly with Orca Whirlpools for on-chain Devnet liquidity routing.
-- **Dynamic SKILLS.md Architecture** — Agents do not rely on hardcoded scripts. They hot-reload their capabilities in real-time by reading the SKILLS.md operating manual.
-- **Sandboxed Reasoning** — LLM intent parsing is strictly decoupled from the execution engine to prevent hallucinated transactions.
+- **Programmatic key provisioning** — Creates isolated Solana wallets for individual agents.
+- **Policy-gated signing** — Routes supported actions through deterministic checks before an execution request is signed.
+- **Token-account workflows** — Supports SOL and SPL token operations, including empty-account recovery flows.
+- **Devnet protocol interaction** — Integrates with Orca Whirlpools for Solana Devnet liquidity-routing experiments.
+- **Dynamic SKILLS.md configuration** — Loads an operating manual that can be refreshed at runtime.
+- **Separated reasoning and execution** — Keeps LLM intent parsing distinct from transaction construction and execution.
+
+> **Prototype notice:** SolAegis runs on Solana Devnet for demonstration and experimentation. It has not been security-audited and is not presented as production custody infrastructure.
 
 ---
 
@@ -70,11 +72,11 @@ Developed for the **Superteam Agentic Wallets Challenge**, this architecture str
 
 ## Key Features
 
-### Autonomous Agent Wallets
-Agents create and manage their own wallets programmatically. Each agent gets an independent Solana keypair with encrypted storage.
+### Agent Wallets
+The prototype creates and manages wallets programmatically. Each agent receives an independent Solana keypair with encrypted storage.
 
-### Automatic Transaction Signing
-Transactions are signed automatically by the agent wallet — no human approval required for policy-approved actions.
+### Policy-Gated Transaction Signing
+For supported Devnet actions, an agent wallet can sign a transaction after it passes the configured policy checks. This flow is for prototype testing, not unattended production custody.
 
 ### DeFi Interaction
 Agents execute swaps through liquidity pools on **Orca Whirlpools**. Supports SOL, devUSDC, devUSDT, devSAMO, and more.
@@ -89,7 +91,7 @@ recover unused accounts and check balance
 ```
 
 ### Multi-Agent Execution
-Multiple agents can run simultaneously with independent wallets, configurations, and execution pipelines.
+The prototype can run multiple agents with independent wallets, configurations, and execution pipelines.
 
 ### Scheduling & Automation
 Agents can schedule **recurring** and **one-shot delayed** blockchain actions using BullMQ:
@@ -98,12 +100,12 @@ scan for scams every 6 hours
 transfer 0.1 SOL to ABC123 in 2 hours
 ```
 
-### Persistent Memory & Learning
-Agents **remember user preferences** and learn from past interactions:
-- Preferences like "I prefer conservative strategies" are stored and influence future decisions
-- Agents track success/failure history and adapt behavior
+### Persistent Context
+Agents can store preferences, notes, and execution history:
+- Preferences such as "I prefer conservative strategies" are stored for later context
+- Execution outcomes can be recorded for review
 - Contextual notes persist across sessions
-- Agents can recall what they remember when asked
+- Agents can retrieve stored notes when asked
 
 ```
 "Remember that I don't like risky trades"
@@ -117,7 +119,7 @@ Each agent loads a **SKILLS.md** file that defines its capabilities, execution p
 "reload skills"
 ```
 
-This allows agents to **evolve their behavior without code changes** — update SKILLS.md and the agent immediately adopts new capabilities.
+This lets developers update the operating manual and reload supported configuration without restarting the application.
 
 ### Policy-Controlled Execution
 Every transaction passes through a multi-layer policy engine with configurable limits per agent. See [SECURITY.md](SECURITY.md) for full details.
@@ -129,7 +131,7 @@ Interact through a premium web dashboard **or** a developer CLI — both connect
 
 ## Architecture
 
-SolAegis separates AI reasoning, wallet execution, and security policies to ensure safe autonomous behavior.
+SolAegis separates AI reasoning, wallet execution, and policy checks so those concerns can be evaluated independently during Devnet experiments.
 
 ```
 User / CLI / Dashboard
@@ -141,7 +143,7 @@ User / CLI / Dashboard
  Deterministic Parser ──→ handles exact patterns (swap, transfer, schedule)
         │
         ▼ (ambiguous only)
-  LLM Intent Parser ────→ Gemini 2.5 Flash for complex instructions
+  LLM Intent Parser ────→ configured provider for ambiguous instructions
         │
         ▼
     Policy Engine ──────→ checks limits, roles, allowed actions
@@ -166,7 +168,7 @@ User / CLI / Dashboard
 | **Memory System** | Stores agent preferences, notes, and decision history |
 | **Scheduler** | Delayed & recurring tasks via BullMQ + Redis |
 | **Market Service** | Real-time SOL price data via CoinGecko |
-| **Audit Log** | Immutable record of all agent actions |
+| **Audit Log** | Record of agent actions for review |
 | **SKILLS.md** | Agent operating manual — hot-reloadable |
 | **Decision Memory** | Tracks execution outcomes for adaptive behavior |
 | **Position Tracker** | Monitors token positions and trade history |
@@ -271,24 +273,24 @@ SKILLS.md acts as a **living operating manual**. Update the file, reload, and th
 
 ---
 
-## Security Architecture
+## Security Controls
 
-Autonomous agents controlling wallets require **strong safeguards**. SolAegis implements **10 security layers**.
+The prototype includes the controls below to explore policy-gated execution. They are not a substitute for an independent security audit or a production threat model.
 
-For full details, see **[SECURITY.md](SECURITY.md)**.
+For implementation notes and limitations, see **[SECURITY.md](SECURITY.md)**.
 
-| # | Layer | Protection |
-|---|-------|-----------|
-| 1 | Wallet Signature Verification | Ed25519 authentication for wallet login |
-| 2 | JWT Authentication | Secure API sessions with expiration |
-| 3 | Prompt Injection Guard | Pattern-based detection of malicious prompts |
-| 4 | Input Sanitization | HTML/XSS stripping on all request bodies |
-| 5 | Rate Limiting | Per-IP and per-user request throttling |
-| 6 | Agent Ownership Isolation | Users cannot access other users' agents |
-| 7 | Policy Engine | Per-agent transaction limits and action restrictions |
-| 8 | Scheduler Guardrails | Prevents abusive job creation |
-| 9 | Encrypted Wallet Storage | AES-256 encryption for all private keys |
-| 10 | Audit Logging | Immutable record of every action |
+| Control | Purpose |
+|---------|---------|
+| Wallet signature verification | Ed25519 authentication for wallet login |
+| JWT authentication | API sessions with expiration |
+| Prompt-injection guard | Pattern-based detection of suspicious prompts |
+| Input sanitization | HTML/XSS stripping on request bodies |
+| Rate limiting | Per-IP and per-user request throttling |
+| Agent ownership isolation | Separates agent records by user |
+| Policy engine | Per-agent transaction limits and action restrictions |
+| Scheduler guardrails | Restricts job creation patterns |
+| Encrypted wallet storage | AES-256 encryption for private-key storage |
+| Audit logging | Records application actions for review |
 
 ---
 
@@ -389,10 +391,11 @@ SOLANA_RPC_URL=https://api.devnet.solana.com
 REDIS_URL=redis://localhost:6379
 MASTER_KEY=<32-byte-hex-key>
 
-# LLM (Gemini)
-LLM_KEY_1=your_gemini_key
-LLM_PRIMARY_PROVIDER=gemini
-LLM_PRIMARY_MODEL=gemini-2.5-flash
+# LLM provider
+# Use values supported by the backend configuration in .env.example.
+LLM_KEY_1=your_provider_key
+LLM_PRIMARY_PROVIDER=your_provider
+LLM_PRIMARY_MODEL=your_model
 
 # Supabase (optional, for persistence)
 SUPABASE_URL=your_supabase_url
@@ -441,7 +444,7 @@ For agents to operate safely, they require:
 - Memory and learning capabilities
 - Multi-agent coordination
 
-SolAegis demonstrates how **agentic wallets** allow AI agents to interact with DeFi **safely and independently** on Solana.
+SolAegis demonstrates one approach to agentic wallet workflows on Solana Devnet, with policy checks kept separate from intent parsing and execution.
 
 ---
 
@@ -454,7 +457,7 @@ SolAegis demonstrates how **agentic wallets** allow AI agents to interact with D
 | **Scheduler** | BullMQ + Redis |
 | **Blockchain** | Solana Web3.js, SPL Token SDK |
 | **DeFi** | Orca Whirlpools SDK |
-| **LLM** | Google Gemini 2.5 Flash (with fallback) |
+| **LLM** | Configurable provider interface with fallback support |
 | **Database** | Supabase (PostgreSQL) |
 | **Auth** | Ed25519 wallet signatures + JWT |
 | **Encryption** | AES-256-GCM for wallet keys |
@@ -475,8 +478,8 @@ See **[ARCHITECTURE.md](ARCHITECTURE.md)** for the complete technical breakdown 
 
 ## Roadmap
 
-### Mainnet Launch
-Production release with secure wallet isolation, policy-based execution, and native Solana DeFi integrations.
+### Future exploration
+Mainnet work would require a formal threat model, independent security review, and stronger custody controls before any release.
 
 ### Phase 1 — Secure Agent Custody
 - **MPC Key Sharding** — eliminate single points of failure in agent key storage
